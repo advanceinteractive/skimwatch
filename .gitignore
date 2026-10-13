@@ -5,3 +5,6 @@ transcripts/
 .DS_Store
 .idea/
 .claude/
+dist/
+build/
+*.spec

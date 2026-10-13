@@ -52,7 +52,10 @@ def fake_pipeline(url, model_name="base", language=None, out_dir=None, progress=
 class WebAppTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = webapp.create_server(0, pipeline=fake_pipeline)
+        cls.opened = []
+        cls.server = webapp.create_server(
+            0, out_dir=Path("/tmp/lt-test-out"), pipeline=fake_pipeline,
+            folder_opener=cls.opened.append)
         cls.base = "http://127.0.0.1:%d" % cls.server.server_address[1]
         threading.Thread(target=cls.server.serve_forever, daemon=True).start()
 
@@ -96,9 +99,15 @@ class WebAppTests(unittest.TestCase):
     def test_config(self):
         status, config = self.json("/api/config")
         self.assertEqual(status, 200)
+        self.assertEqual(config["app"], "Local Transcribe")
         self.assertEqual(config["default_model"], lt.DEFAULT_MODEL)
         self.assertEqual([m["name"] for m in config["models"]], lt.MODEL_NAMES)
         self.assertEqual(config["languages"][0]["code"], "auto")
+
+    def test_open_folder(self):
+        status, body = self.json("/api/open-folder", {})
+        self.assertEqual((status, body), (200, {"ok": True}))
+        self.assertEqual(self.opened[-1], Path("/tmp/lt-test-out"))
 
     def test_successful_job(self):
         status, job = self.json("/api/jobs", {"url": "https://example.com/watch?v=1"})

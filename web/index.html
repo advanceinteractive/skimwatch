@@ -125,7 +125,10 @@
       <button id="dl-srt" class="small" type="button">Download .srt</button>
     </div>
     <div id="transcript" class="no-ts"></div>
-    <p class="saved" id="saved" hidden></p>
+    <p class="saved" id="saved" hidden>
+      <span id="saved-path"></span>
+      <button id="open-folder" class="small" type="button">Show in folder</button>
+    </p>
   </section>
 
   <footer id="footer">Runs entirely on this computer.</footer>
@@ -241,7 +244,7 @@
     var done = job.status === "done";
     $("toolbar").hidden = !done;
     $("saved").hidden = !done;
-    if (done) { $("saved").textContent = "Saved to " + job.txt_path; }
+    if (done) { $("saved-path").textContent = "Saved to " + job.txt_path + " "; }
   }
 
   function finish() {
@@ -337,6 +340,10 @@
   });
   $("dl-srt").addEventListener("click", function () {
     download(current.base_name + ".srt", current.srt);
+  });
+
+  $("open-folder").addEventListener("click", function () {
+    api("/api/open-folder", {}).catch(function (err) { showError(err.message); });
   });
 
   function updateHint() {

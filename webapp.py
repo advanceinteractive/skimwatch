@@ -20,6 +20,8 @@ import os
 import queue
 import re
 import socketserver
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -31,11 +33,23 @@ from typing import Callable, Optional
 import local_transcribe as lt
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+APP_NAME = "Local Transcribe"
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 16 * 1024
 MAX_FINISHED_JOBS = 20
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 FINISHED = {"done", "error", "cancelled"}
+
+
+def open_folder(path: Path) -> None:
+    """Show a folder in Finder / Explorer / the Linux file manager."""
+    path.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+    elif os.name == "nt":
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["xdg-open", str(path)])
 
 
 class Job:
@@ -93,9 +107,15 @@ class Job:
 class JobManager:
     """Runs jobs one at a time on a background thread."""
 
-    def __init__(self, pipeline: Callable[..., dict], out_dir: Path) -> None:
+    def __init__(
+        self,
+        pipeline: Callable[..., dict],
+        out_dir: Path,
+        folder_opener: Callable[[Path], None] = open_folder,
+    ) -> None:
         self.pipeline = pipeline
         self.out_dir = out_dir
+        self.folder_opener = folder_opener
         self.jobs: dict = {}
         self.lock = threading.Lock()
         self.queue: "queue.Queue[Job]" = queue.Queue()
@@ -213,6 +233,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, "text/html; charset=utf-8")
         elif path == "/api/config":
             self._json(200, {
+                "app": APP_NAME,
                 "version": lt.__version__,
                 "models": [{"name": n, "description": d} for n, d in lt.MODELS],
                 "default_model": lt.DEFAULT_MODEL,
@@ -266,6 +287,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(202, job.snapshot())
             return
 
+        if path == "/api/open-folder":
+            try:
+                self.manager.folder_opener(self.manager.out_dir)
+            except Exception as exc:
+                self._json(500, {"error": f"Could not open the folder: {exc}"})
+                return
+            self._json(200, {"ok": True})
+            return
+
         match = re.fullmatch(r"/api/jobs/([0-9a-f]{12})/cancel", path)
         job = self.manager.get(match.group(1)) if match else None
         if job:
@@ -291,9 +321,12 @@ def create_server(
     out_dir: Optional[Path] = None,
     pipeline: Optional[Callable[..., dict]] = None,
     port_attempts: int = 20,
+    folder_opener: Callable[[Path], None] = open_folder,
 ) -> LocalServer:
     """Build the server, trying the next ports if the first is taken."""
-    manager = JobManager(pipeline or lt.run_pipeline, Path(out_dir or lt.DEFAULT_OUT_DIR))
+    manager = JobManager(
+        pipeline or lt.run_pipeline, Path(out_dir or lt.DEFAULT_OUT_DIR), folder_opener
+    )
     handler = type("BoundHandler", (Handler,), {"manager": manager})
     last_error: Optional[OSError] = None
     candidates = [port] if port == 0 else range(port, port + port_attempts)

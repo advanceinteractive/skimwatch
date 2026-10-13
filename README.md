@@ -14,14 +14,31 @@ clean, readable transcript — in your browser, on your own computer.
 
 ## Quick start
 
+### Mac app (no Python needed)
+
+1. Download `Local-Transcribe-<version>-mac-arm64.zip` from the
+   [Releases](../../releases) page and unzip it. (Apple Silicon Macs, M1 or
+   newer, on macOS 11 or later.)
+2. Drag **Local Transcribe** to your Applications folder and open it.
+3. The app is not signed with a paid Apple certificate, so macOS blocks it the
+   first time. Open **System Settings → Privacy & Security**, scroll down, and
+   click **Open Anyway**. (On macOS 14 and earlier: right-click the app and
+   choose **Open**.) You only do this once.
+4. Your browser opens the app's page. Paste a video link and press
+   **Transcribe**.
+
+Click the Dock icon to bring the page back; quit from the Dock or with
+`Cmd+Q`. Transcripts are saved to `Documents/Local Transcribe`.
+
+### Run from source (macOS, Windows, Linux)
+
 You need **Python 3.10 or newer** ([python.org/downloads](https://www.python.org/downloads/)).
 On Windows, tick **"Add python.exe to PATH"** in the installer.
 
 1. Download this project (green **Code** button → **Download ZIP**) and unzip it.
 2. Start it:
-   - **macOS:** double-click `start-mac.command`.
-     The first time, macOS may refuse to open a downloaded file: right-click
-     it, choose **Open**, then **Open** again.
+   - **macOS:** double-click `start-mac.command`. If macOS blocks it, approve
+     it under **System Settings → Privacy & Security → Open Anyway**.
    - **Windows:** double-click `start-windows.bat`.
      If SmartScreen appears, choose **More info → Run anyway**.
    - **Linux:** run `./start-mac.command` in a terminal.
@@ -29,11 +46,14 @@ On Windows, tick **"Add python.exe to PATH"** in the installer.
    **Transcribe**.
 
 The first start takes a few minutes while it installs what it needs into a
-private `.venv` folder inside the project. The first time you use each quality
-level, its speech model is downloaded once. After that it starts in seconds
-and transcription works offline (apart from downloading the video itself).
+private `.venv` folder inside the project. To stop the program, close its
+terminal window or press `Ctrl+C` in it.
 
-To stop the program, close its terminal window or press `Ctrl+C` in it.
+### Either way
+
+The first time you use each quality level, its speech model is downloaded
+once. After that, transcription itself works offline (the video still has to
+be downloaded).
 
 ## Quality levels
 
@@ -54,8 +74,10 @@ switches language, pick the language yourself for a better result.
 
 ## Where transcripts go
 
-Every finished transcript is also saved to the `transcripts` folder next to the
-program, as `<title>_<video id>.txt` and `.srt`.
+Every finished transcript is also saved as `<title>_<video id>.txt` and `.srt`:
+in `Documents/Local Transcribe` for the Mac app, or in the `transcripts` folder
+next to the program when run from source. **Show in folder** on the page opens
+it.
 
 ## Command line
 
@@ -75,9 +97,11 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 ## Troubleshooting
 
 - **"Could not download that video"** — sites change often, and the downloader
-  ([yt-dlp](https://github.com/yt-dlp/yt-dlp)) is updated to keep up. Update it:
-  `.venv/bin/python -m pip install -U yt-dlp` (Windows:
-  `.venv\Scripts\python -m pip install -U yt-dlp`).
+  ([yt-dlp](https://github.com/yt-dlp/yt-dlp)) is updated to keep up.
+  - *Mac app:* download the latest release; each one ships the current
+    downloader.
+  - *From source:* `.venv/bin/python -m pip install -U yt-dlp` (Windows:
+    `.venv\Scripts\python -m pip install -U yt-dlp`).
 - **YouTube still fails after updating** — the downloader increasingly relies
   on a JavaScript runtime for YouTube. Installing [Deno](https://deno.com/)
   (free, one command) is its recommended fix; no other setup is needed.
@@ -98,7 +122,19 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 - `webapp.py` — a small web server (Python standard library only) that answers
   on `127.0.0.1` only, so nothing else on your network can reach it.
 - `web/index.html` — the page you see.
+- `app.py` — entry point of the packaged app (Dock icon, single instance).
 - `tests/` — run with `python -m unittest discover -s tests`.
+
+## Building the Mac app
+
+```
+./packaging/build-mac.sh
+```
+
+This uses [PyInstaller](https://pyinstaller.org/) in a throw-away environment
+and writes `dist/Local-Transcribe-<version>-mac-<arch>.zip`. The app runs only
+on the kind of Mac it was built on (Apple Silicon or Intel). Upload the zip to
+a GitHub release to share it.
 
 ## Responsible use
 
