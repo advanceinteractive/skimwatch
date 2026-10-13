@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import os
 import socket
 import tempfile
@@ -108,7 +109,8 @@ def default_settings() -> dict:
     return {
         "provider": "",
         "providers": {
-            pid: {"api_key": "", "model": "", "base_url": ""} for pid in PROVIDER_IDS
+            pid: {"api_key": "", "model": "", "base_url": "", "workspace_id": ""}
+            for pid in PROVIDER_IDS
         },
     }
 
@@ -126,7 +128,7 @@ def _normalise(raw: object) -> dict:
             entry = stored.get(pid)
             if not isinstance(entry, dict):
                 continue
-            for field in ("api_key", "model", "base_url"):
+            for field in ("api_key", "model", "base_url", "workspace_id"):
                 if isinstance(entry.get(field), str):
                     settings["providers"][pid][field] = entry[field].strip()
     return settings
@@ -200,6 +202,9 @@ def public_settings(settings: dict) -> dict:
                 "default_model": info["default_model"],
                 "base_url": _base_url(settings, pid),
                 "sends_data_off_device": info["sends_data_off_device"],
+                # Only Anthropic has workspaces; the id is not a secret.
+                "uses_workspace": pid == "claude",
+                "workspace_id": settings["providers"][pid]["workspace_id"],
             }
             for pid, info in PROVIDERS.items()
         ],
@@ -247,6 +252,15 @@ def update_settings(settings: dict, changes: dict) -> dict:
             raise AIError("That model name is not valid.")
         entry["model"] = model.strip()
 
+    if "workspace_id" in changes:
+        workspace_id = changes["workspace_id"]
+        if not isinstance(workspace_id, str) or not re.fullmatch(
+                r"[A-Za-z0-9_-]{0,100}", workspace_id.strip()):
+            raise AIError(
+                "That workspace ID doesn't look right. It starts with wrkspc_ and "
+                "has no spaces.")
+        entry["workspace_id"] = workspace_id.strip()
+
     if changes.get("clear_key"):
         entry["api_key"] = ""
     api_key = changes.get("api_key")
@@ -284,6 +298,13 @@ def _error_detail(body: bytes) -> str:
 
 def _http_error(provider_id: str, status: int, detail: str, model: str) -> AIError:
     name = PROVIDERS[provider_id]["name"]
+    if "workspace" in detail.lower() and provider_id == "claude":
+        return AIError(
+            "This Claude API key is not tied to a workspace, so Anthropic needs to "
+            "know which workspace to use. Open AI settings, then Advanced, and paste "
+            "your Workspace ID (it starts with wrkspc_; find it in the Anthropic "
+            "Console under Settings, Workspaces). Or create a new API key inside a "
+            "workspace and use that instead.")
     if status in (401, 403):
         if provider_id == "ollama":
             return AIError("Ollama refused the request. Check the server address in the AI settings.")
@@ -373,7 +394,12 @@ def _auth_headers(settings: dict, provider_id: str) -> dict:
     if PROVIDERS[provider_id]["needs_key"] and not key:
         raise AIError(f"Add your {PROVIDERS[provider_id]['name']} API key in the AI settings first.")
     if provider_id == "claude":
-        return {"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION}
+        headers = {"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION}
+        # Keys that are not tied to one workspace must say which to use.
+        workspace_id = settings["providers"]["claude"].get("workspace_id")
+        if workspace_id:
+            headers["anthropic-workspace-id"] = workspace_id
+        return headers
     if provider_id == "openai":
         return {"Authorization": f"Bearer {key}"}
     return {}

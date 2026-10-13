@@ -388,7 +388,9 @@ class SettingsTests(AITestCase):
         claude, openai, ollama = public["providers"]
         self.assertEqual(set(claude), {
             "id", "name", "needs_key", "has_key", "model", "default_model", "base_url",
-            "sends_data_off_device"})
+            "sends_data_off_device", "uses_workspace", "workspace_id"})
+        self.assertEqual([p["uses_workspace"] for p in public["providers"]],
+                         [True, False, False])
         self.assertEqual(claude["model"], "claude-opus-5-5")
         self.assertEqual(claude["default_model"], "claude-opus-5-5")
         self.assertEqual(claude["base_url"], "https://api.anthropic.com")
@@ -408,7 +410,8 @@ class SettingsTests(AITestCase):
         self.assertEqual(loaded, settings)
         self.assertEqual(loaded["provider"], "openai")
         self.assertEqual(loaded["providers"]["openai"], {
-            "api_key": FAKE_KEY, "model": "gpt-alpha", "base_url": "https://example.com/api"})
+            "api_key": FAKE_KEY, "model": "gpt-alpha", "base_url": "https://example.com/api",
+            "workspace_id": ""})
         if os.name == "posix":
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
         self.assertEqual([p.name for p in self.path.parent.iterdir()], ["settings.json"])
@@ -433,6 +436,34 @@ class SettingsTests(AITestCase):
         cleared = ai_chat.update_settings(settings, {"provider": "claude", "clear_key": True})
         self.assertEqual(cleared["providers"]["claude"]["api_key"], "")
         self.assertFalse(ai_chat.public_settings(cleared)["providers"][0]["has_key"])
+
+    def test_workspace_id(self):
+        settings = ai_chat.update_settings(
+            ai_chat.default_settings(),
+            {"provider": "claude", "api_key": FAKE_KEY, "workspace_id": " wrkspc_01AbC "})
+        self.assertEqual(ai_chat.public_settings(settings)["providers"][0]["workspace_id"],
+                         "wrkspc_01AbC")
+        headers = ai_chat._auth_headers(settings, "claude")
+        self.assertEqual(headers["anthropic-workspace-id"], "wrkspc_01AbC")
+        # Leaving it out keeps it; an empty value removes it.
+        kept = ai_chat.update_settings(settings, {"provider": "claude", "model": "m"})
+        self.assertEqual(kept["providers"]["claude"]["workspace_id"], "wrkspc_01AbC")
+        removed = ai_chat.update_settings(settings, {"provider": "claude", "workspace_id": ""})
+        self.assertNotIn("anthropic-workspace-id", ai_chat._auth_headers(removed, "claude"))
+        with self.assertRaises(ai_chat.AIError):
+            ai_chat.update_settings(settings, {"provider": "claude", "workspace_id": "a b\nc"})
+        # Never sent to other providers.
+        other = ai_chat.update_settings(
+            settings, {"provider": "openai", "api_key": FAKE_KEY, "workspace_id": "wrkspc_x"})
+        self.assertNotIn("anthropic-workspace-id", ai_chat._auth_headers(other, "openai"))
+
+    def test_unscoped_key_error_explains_the_fix(self):
+        error = ai_chat._http_error(
+            "claude", 400,
+            "This API key is not scoped to a workspace, so this request must include the "
+            "anthropic-workspace-id header", "claude-haiku-5-5")
+        self.assertIn("Workspace ID", str(error))
+        self.assertIn("Advanced", str(error))
 
     def test_changing_the_address_drops_the_saved_key(self):
         settings = ai_chat.update_settings(

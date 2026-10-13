@@ -216,6 +216,13 @@
         <label for="ai-base-url">Base URL</label>
         <input id="ai-base-url" type="text" inputmode="url" spellcheck="false" autocapitalize="off">
         <p class="hint">Only change this if you use a proxy or a non-standard server address.</p>
+        <div id="ai-workspace-row" hidden>
+          <label for="ai-workspace">Workspace ID</label>
+          <input id="ai-workspace" type="text" spellcheck="false" autocapitalize="off"
+                 autocomplete="off" placeholder="wrkspc_...">
+          <p class="hint">Only needed if Claude says your API key is not scoped to a
+            workspace. Find it in the Anthropic Console under Settings, Workspaces.</p>
+        </div>
       </details>
       <div class="row">
         <button id="ai-save" class="primary" type="submit">Save</button>
@@ -700,6 +707,8 @@
     if (!p) { return; }
     syncKeyField(p);
     $("ai-base-url").value = p.base_url || "";
+    $("ai-workspace-row").hidden = !p.uses_workspace;
+    $("ai-workspace").value = p.workspace_id || "";
     $("ai-privacy").textContent = privacyText(p);
     settingsStatus("");
     showModelText(p.model || p.default_model || "", "");
@@ -759,6 +768,7 @@
       return;
     }
     var body = { provider: id, base_url: trim($("ai-base-url").value) };
+    if (p.uses_workspace) { body.workspace_id = trim($("ai-workspace").value); }
     if (model) { body.model = model; }
     if (p.needs_key && key) { body.api_key = key; }
     settingsBusy(true);
