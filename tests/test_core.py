@@ -127,6 +127,29 @@ class OutputTests(unittest.TestCase):
             self.assertTrue(srt.read_text(encoding="utf-8").startswith("1\n00:00:00,000"))
 
 
+class ChunkTests(unittest.TestCase):
+    def test_short_audio_is_one_piece(self):
+        import numpy as np
+        audio = np.ones(lt.SAMPLE_RATE * 100, dtype=np.float32)
+        self.assertEqual(lt.chunk_bounds(audio, chunk_seconds=600), [(0, len(audio))])
+        self.assertEqual(lt.chunk_bounds(audio[:0]), [(0, 0)])
+
+    def test_cuts_in_the_quiet_spot(self):
+        import numpy as np
+        rate = lt.SAMPLE_RATE
+        audio = np.ones(rate * 250, dtype=np.float32)
+        audio[rate * 52:rate * 53] = 0.0     # a pause inside the first search window
+        audio[rate * 111:rate * 112] = 0.0   # and inside the second
+        bounds = lt.chunk_bounds(audio, chunk_seconds=60, search_seconds=10)
+        self.assertEqual(bounds[0][0], 0)
+        self.assertEqual(bounds[-1][1], len(audio))
+        for (_, end), (begin, _) in zip(bounds, bounds[1:]):
+            self.assertEqual(end, begin)     # contiguous, nothing dropped
+        self.assertTrue(52 <= bounds[0][1] / rate <= 53)
+        self.assertTrue(111 <= bounds[1][1] / rate <= 112)
+        self.assertTrue(all(end - begin <= 70 * rate for begin, end in bounds))
+
+
 class DownloadTests(unittest.TestCase):
     def fake_downloader(self, failures, message="HTTP Error 403: Forbidden"):
         calls = []

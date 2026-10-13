@@ -291,6 +291,9 @@ def download_audio(
 # Transcription
 # ---------------------------------------------------------------------------
 
+SAMPLE_RATE = 16000  # what Whisper expects
+CHUNK_SECONDS = 600
+
 _model_lock = threading.Lock()
 _model_cache: dict = {}  # holds at most one loaded model
 
@@ -330,6 +333,28 @@ def load_model(model_name: str, device: str = "auto"):
         return model
 
 
+def chunk_bounds(audio, chunk_seconds: int = CHUNK_SECONDS, search_seconds: int = 30) -> list:
+    """
+    Split audio samples into pieces of about chunk_seconds, cutting at the
+    quietest half second near the end of each piece so words stay whole.
+    Returns [(begin_sample, end_sample)].
+    """
+    bounds = []
+    total = len(audio)
+    window = SAMPLE_RATE // 2
+    begin = 0
+    while total - begin > (chunk_seconds + search_seconds) * SAMPLE_RATE:
+        low = begin + (chunk_seconds - search_seconds) * SAMPLE_RATE
+        tail = abs(audio[low:begin + chunk_seconds * SAMPLE_RATE])
+        count = len(tail) // window
+        loudness = tail[:count * window].reshape(count, window).mean(axis=1)
+        cut = low + int(loudness.argmin()) * window + window // 2
+        bounds.append((begin, cut))
+        begin = cut
+    bounds.append((begin, total))
+    return bounds
+
+
 def transcribe(
     audio_path: Path,
     model_name: str = DEFAULT_MODEL,
@@ -357,31 +382,41 @@ def transcribe(
 
         if progress:
             progress("transcribing", 0.0, "")
-        segments_iter, info = model.transcribe(
-            str(audio_path),
-            language=language,
-            vad_filter=True,
-            condition_on_previous_text=False,
-        )
-        duration = float(getattr(info, "duration", 0) or 0)
+        from faster_whisper import decode_audio
+
+        audio = decode_audio(str(audio_path), sampling_rate=SAMPLE_RATE)
+        duration = len(audio) / SAMPLE_RATE
+        lang = language
         segments = []
-        for seg in segments_iter:
-            if should_cancel and should_cancel():
-                raise Cancelled()
-            text = (seg.text or "").strip()
-            if not text:
-                continue
-            item = {"start": float(seg.start), "end": float(seg.end), "text": text}
-            segments.append(item)
-            if on_segment:
-                on_segment(item)
-            if progress:
-                progress(
-                    "transcribing",
-                    min(seg.end / duration, 1.0) if duration else None,
-                    "",
-                )
-        lang = getattr(info, "language", None) or language or ""
+        # Long recordings are fed to Whisper a piece at a time: doing a whole
+        # hour in one call needs several gigabytes of memory.
+        for begin, end in chunk_bounds(audio):
+            offset = begin / SAMPLE_RATE
+            segments_iter, info = model.transcribe(
+                audio[begin:end],
+                language=lang,
+                vad_filter=True,
+                condition_on_previous_text=False,
+            )
+            # Keep the language detected in the first piece for the rest.
+            lang = lang or getattr(info, "language", None)
+            for seg in segments_iter:
+                if should_cancel and should_cancel():
+                    raise Cancelled()
+                text = (seg.text or "").strip()
+                if not text:
+                    continue
+                item = {
+                    "start": offset + float(seg.start),
+                    "end": offset + float(seg.end),
+                    "text": text,
+                }
+                segments.append(item)
+                if on_segment:
+                    on_segment(item)
+                if progress and duration:
+                    progress("transcribing", min(item["end"] / duration, 1.0), "")
+        lang = lang or ""
         joiner = "" if lang in _UNSPACED_LANGUAGES else " "
         return {
             "text": joiner.join(s["text"] for s in segments),
