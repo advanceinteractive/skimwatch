@@ -33,13 +33,16 @@
   label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; }
   .row > .grow { flex: 1 1 260px; min-width: 0; }
-  input[type=url], select {
+  input[type=url], input[type=password], input[type=text], select, textarea {
     width: 100%; padding: 11px 12px; font: inherit; color: var(--text);
     background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
   }
-  input[type=url]:focus, select:focus, button:focus-visible {
+  input[type=url]:focus, input[type=password]:focus, input[type=text]:focus,
+  select:focus, textarea:focus, button:focus-visible, summary:focus-visible,
+  .messages:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
+  textarea { display: block; resize: vertical; min-height: 48px; }
   button {
     font: inherit; padding: 11px 18px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--border); background: var(--soft); color: var(--text);
@@ -68,6 +71,37 @@
   }
   #transcript.no-ts .ts { display: none; }
   .saved { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; overflow-wrap: anywhere; }
+  .ask-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .ask-head h2 { margin: 0; }
+  #ai-intro p { margin: 0 0 14px; max-width: 62ch; }
+  #ai-settings { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0 16px; margin: 8px 0 16px; }
+  .field { margin-bottom: 14px; }
+  .field .row { align-items: flex-start; }
+  .note {
+    background: var(--soft); border-left: 4px solid var(--accent); border-radius: 6px;
+    padding: 10px 12px; margin: 0 0 14px; font-size: 0.9rem; overflow-wrap: anywhere;
+  }
+  .note p { margin: 0; }
+  .note p + p { margin-top: 4px; }
+  details.field summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; border-radius: 4px; }
+  details.field[open] summary { margin-bottom: 10px; }
+  .messages { max-height: 460px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; border-radius: 8px; }
+  .msg {
+    flex-shrink: 0; max-width: 88%; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--border); overflow-wrap: anywhere;
+  }
+  .msg.user { align-self: flex-end; background: var(--bg); }
+  .msg.assistant { align-self: flex-start; background: var(--soft); }
+  .msg.pending .msg-text { color: var(--muted); font-style: italic; }
+  .msg .who { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 2px; }
+  .msg .msg-text { white-space: pre-wrap; }
+  .msg button { margin-top: 8px; background: var(--card); }
+  .chat-error { border-radius: 8px; padding: 10px 12px; margin: 12px 0 0; font-size: 0.9rem; }
+  .quick { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+  .ask-row { margin-top: 12px; align-items: flex-end; }
+  .chat-foot { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .chat-foot .hint { flex: 1 1 240px; }
+  .chat-foot button { margin-top: 6px; }
   footer { color: var(--muted); font-size: 0.85rem; text-align: center; }
   [hidden] { display: none !important; }
 </style>
@@ -129,6 +163,90 @@
       <span id="saved-path"></span>
       <button id="open-folder" class="small" type="button">Show in folder</button>
     </p>
+  </section>
+
+  <section id="ask" class="card" aria-labelledby="ask-title" hidden>
+    <div class="ask-head">
+      <h2 id="ask-title">Ask about this transcript</h2>
+      <button id="ai-settings-toggle" class="small" type="button"
+              aria-expanded="false" aria-controls="ai-settings" hidden>AI settings</button>
+    </div>
+
+    <div id="ai-intro">
+      <p>
+        Connect Claude, ChatGPT (OpenAI) or a local Ollama model to ask
+        questions about this transcript &mdash; get a summary, pull out the key
+        points, or look something up without reading the whole thing.
+      </p>
+      <button id="ai-setup" class="primary" type="button">Set up AI assistant</button>
+    </div>
+
+    <form id="ai-settings" autocomplete="off" aria-label="AI assistant settings" hidden>
+      <div class="field">
+        <label for="ai-provider">AI provider</label>
+        <select id="ai-provider"></select>
+      </div>
+      <div class="note" id="ai-note">
+        <p id="ai-privacy"></p>
+        <p id="ai-key-note">Your key is stored only on this computer.</p>
+      </div>
+      <div class="field" id="ai-key-row">
+        <label for="ai-key">API key</label>
+        <div class="row">
+          <div class="grow">
+            <input id="ai-key" type="password" autocomplete="off" spellcheck="false">
+          </div>
+          <button id="ai-key-clear" type="button" hidden>Remove saved key</button>
+        </div>
+      </div>
+      <div class="field">
+        <label id="ai-model-label" for="ai-model-select">Model</label>
+        <div class="row">
+          <div class="grow">
+            <select id="ai-model-select" aria-describedby="ai-model-hint"></select>
+            <input id="ai-model-text" type="text" spellcheck="false" autocapitalize="off"
+                   aria-describedby="ai-model-hint" hidden>
+          </div>
+          <button id="ai-model-refresh" type="button">Refresh</button>
+        </div>
+        <p class="hint" id="ai-model-hint"></p>
+      </div>
+      <details class="field">
+        <summary>Advanced</summary>
+        <label for="ai-base-url">Base URL</label>
+        <input id="ai-base-url" type="text" inputmode="url" spellcheck="false" autocapitalize="off">
+        <p class="hint">Only change this if you use a proxy or a non-standard server address.</p>
+      </details>
+      <div class="row">
+        <button id="ai-save" class="primary" type="submit">Save</button>
+        <button id="ai-cancel" type="button">Cancel</button>
+      </div>
+      <p class="hint" id="ai-settings-status" role="status"></p>
+    </form>
+
+    <div id="ai-chat" hidden>
+      <div id="ai-messages" class="messages" role="log" aria-live="polite"
+           aria-label="Conversation" tabindex="0"></div>
+      <p class="hint" id="ai-caption"></p>
+      <p class="chat-error error" id="ai-chat-error" role="alert" hidden></p>
+      <div class="quick" id="ai-quick" role="group" aria-label="Quick questions">
+        <button class="small" type="button" data-prompt="Summarize this transcript in a few short paragraphs.">Summarize</button>
+        <button class="small" type="button" data-prompt="List the key points made in this transcript as a bulleted list.">Key points</button>
+        <button class="small" type="button" data-prompt="List any action items, recommendations or next steps mentioned in this transcript. If there are none, say so.">Action items</button>
+      </div>
+      <div class="row ask-row">
+        <div class="grow">
+          <label for="ai-question">Your question</label>
+          <textarea id="ai-question" rows="2" aria-describedby="ai-question-hint"
+                    placeholder="Ask anything about this transcript"></textarea>
+        </div>
+        <button id="ai-send" class="primary" type="button">Ask</button>
+      </div>
+      <div class="chat-foot">
+        <p class="hint" id="ai-question-hint">Enter sends, Shift+Enter adds a new line. <span id="ai-chat-note"></span></p>
+        <button id="ai-clear" class="small" type="button" hidden>Clear conversation</button>
+      </div>
+    </div>
   </section>
 
   <footer id="footer">Runs entirely on this computer.</footer>
@@ -245,6 +363,7 @@
     $("toolbar").hidden = !done;
     $("saved").hidden = !done;
     if (done) { $("saved-path").textContent = "Saved to " + job.txt_path + " "; }
+    updateAsk();
   }
 
   function finish() {
@@ -273,6 +392,7 @@
     showError("");
     $("result").hidden = true;
     $("transcript").textContent = "";
+    resetChat();
     $("cancel").disabled = false;
     setBusy(true);
     render({ status: "queued", paragraphs: [] });
@@ -308,8 +428,7 @@
     setTimeout(function () { button.textContent = original; }, 1500);
   }
 
-  $("copy").addEventListener("click", function () {
-    var button = this, text = plainText(current, $("show-ts").checked);
+  function copyText(button, text) {
     function fallback() {
       var area = document.createElement("textarea");
       area.value = text;
@@ -323,6 +442,10 @@
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { flash(button, "Copied"); }, fallback);
     } else { fallback(); }
+  }
+
+  $("copy").addEventListener("click", function () {
+    copyText(this, plainText(current, $("show-ts").checked));
   });
 
   function download(name, text) {
@@ -345,6 +468,345 @@
   $("open-folder").addEventListener("click", function () {
     api("/api/open-folder", {}).catch(function (err) { showError(err.message); });
   });
+
+  // ---- Ask about this transcript -------------------------------------
+  // `ai` is the last /api/ai/settings response; while it is null (older
+  // server) the whole card stays hidden.
+  var ai = null, chatHistory = [], asking = false, askSeq = 0;
+  var modelSeq = 0, modelsListed = false;
+
+  function trim(value) { return String(value || "").replace(/^\s+|\s+$/g, ""); }
+
+  function errorText(err) {
+    if (err instanceof TypeError) {
+      return "Could not reach the program. Is its window still open?";
+    }
+    return (err && err.message) || "Something went wrong.";
+  }
+
+  function providerById(id) {
+    if (!ai) { return null; }
+    return ai.providers.filter(function (p) { return p.id === id; })[0] || null;
+  }
+
+  function activeProvider() { return ai ? providerById(ai.provider) : null; }
+
+  function aiReady() {
+    var p = activeProvider();
+    return !!p && (!p.needs_key || p.has_key);
+  }
+
+  function privacyText(p) {
+    if (!p) { return ""; }
+    if (p.sends_data_off_device) {
+      return "When you ask a question, the transcript and your questions are sent to " +
+        p.name + ". Usage is billed to your own API key.";
+    }
+    return p.name + " runs on this computer, so nothing leaves it.";
+  }
+
+  function chatError(message) {
+    $("ai-chat-error").textContent = message;
+    $("ai-chat-error").hidden = !message;
+  }
+
+  function updateChatControls() {
+    var empty = chatHistory.length === 0;
+    $("ai-quick").hidden = !empty || asking;
+    $("ai-clear").hidden = empty;
+    $("ai-clear").disabled = asking;
+    $("ai-question").disabled = asking;
+    $("ai-send").disabled = asking;
+  }
+
+  function updateAsk() {
+    var show = !!ai && !!current && current.status === "done";
+    $("ask").hidden = !show;
+    if (!show) { return; }
+    var ready = aiReady(), formOpen = !$("ai-settings").hidden;
+    $("ai-intro").hidden = ready || formOpen;
+    $("ai-chat").hidden = !ready;
+    $("ai-settings-toggle").hidden = !ready;
+    $("ai-settings-toggle").setAttribute("aria-expanded", formOpen ? "true" : "false");
+    $("ai-chat-note").textContent = ready ? privacyText(activeProvider()) : "";
+    updateChatControls();
+  }
+
+  function resetChat() {
+    askSeq++;                       // discard any answer still in flight
+    asking = false;
+    chatHistory = [];
+    $("ai-messages").textContent = "";
+    $("ai-caption").textContent = "";
+    $("ai-question").value = "";
+    chatError("");
+    updateChatControls();
+  }
+
+  function addMessage(role, text, pending) {
+    var list = $("ai-messages");
+    var item = document.createElement("div");
+    item.className = "msg " + role + (pending ? " pending" : "");
+    var who = document.createElement("span");
+    who.className = "who";
+    who.textContent = role === "user" ? "You" : "Assistant";
+    var body = document.createElement("div");
+    body.className = "msg-text";
+    body.textContent = text;
+    item.appendChild(who);
+    item.appendChild(body);
+    if (role === "assistant" && !pending) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "small";
+      button.textContent = "Copy";
+      button.setAttribute("aria-label", "Copy this answer");
+      button.addEventListener("click", function () { copyText(button, text); });
+      item.appendChild(button);
+    }
+    list.appendChild(item);
+    list.scrollTop = list.scrollHeight;
+    return item;
+  }
+
+  function removeMessage(item) {
+    if (item && item.parentNode) { item.parentNode.removeChild(item); }
+  }
+
+  function ask(text) {
+    var question = trim(text);
+    if (!question || asking || !current || current.status !== "done" || !aiReady()) { return; }
+    var seq = ++askSeq, box = $("ai-question");
+    var messages = chatHistory.concat([{ role: "user", content: question }]);
+    var mine = addMessage("user", question, false);
+    var waiting = addMessage("assistant", "Thinking…", true);
+    asking = true;
+    chatError("");
+    box.value = "";
+    updateChatControls();
+    api("/api/ai/ask", { job_id: current.id, messages: messages }).then(function (data) {
+      if (seq !== askSeq) { return; }
+      if (!data || typeof data.answer !== "string" || !trim(data.answer)) {
+        throw new Error("The assistant returned an empty answer. Please try again.");
+      }
+      removeMessage(waiting);
+      chatHistory = messages.concat([{ role: "assistant", content: data.answer }]);
+      addMessage("assistant", data.answer, false);
+      var p = providerById(data.provider);
+      var bits = [p ? p.name : data.provider, data.model].filter(function (b) { return !!b; });
+      $("ai-caption").textContent = bits.length ? "Answered by " + bits.join(" · ") : "";
+      asking = false;
+      updateChatControls();
+      box.focus();
+    }).catch(function (err) {
+      if (seq !== askSeq) { return; }
+      // Failed turn: take both bubbles back out and hand the question back.
+      removeMessage(waiting);
+      removeMessage(mine);
+      box.value = question;
+      asking = false;
+      chatError(errorText(err));
+      updateChatControls();
+      box.focus();
+    });
+  }
+
+  $("ai-send").addEventListener("click", function () { ask($("ai-question").value); });
+  $("ai-question").addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      ask(this.value);
+    }
+  });
+  Array.prototype.forEach.call($("ai-quick").querySelectorAll("button"), function (button) {
+    button.addEventListener("click", function () { ask(button.getAttribute("data-prompt")); });
+  });
+  $("ai-clear").addEventListener("click", function () {
+    if (asking) { return; }
+    resetChat();
+    $("ai-question").focus();
+  });
+
+  // ---- AI settings form ----
+  function settingsStatus(message) { $("ai-settings-status").textContent = message; }
+
+  function modelValue() {
+    return trim(modelsListed ? $("ai-model-select").value : $("ai-model-text").value);
+  }
+
+  function showModelText(value, hint) {
+    modelsListed = false;
+    $("ai-model-select").hidden = true;
+    $("ai-model-text").hidden = false;
+    $("ai-model-text").value = value;
+    $("ai-model-label").htmlFor = "ai-model-text";
+    $("ai-model-hint").textContent = hint;
+  }
+
+  function showModelSelect(list, value) {
+    var select = $("ai-model-select");
+    var names = list.slice();
+    if (value && names.indexOf(value) < 0) { names.unshift(value); }
+    select.textContent = "";
+    names.forEach(function (name) {
+      var option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    if (value) { select.value = value; }
+    modelsListed = true;
+    $("ai-model-text").hidden = true;
+    select.hidden = false;
+    $("ai-model-label").htmlFor = "ai-model-select";
+    $("ai-model-hint").textContent = "";
+  }
+
+  // Resolves to true when the list was loaded into the <select>.
+  function loadModels(p) {
+    var seq = ++modelSeq;
+    function wanted() { return modelValue() || p.model || p.default_model || ""; }
+    $("ai-model-refresh").disabled = true;
+    $("ai-model-hint").textContent = "Loading models…";
+    return api("/api/ai/models?provider=" + encodeURIComponent(p.id)).then(function (data) {
+      if (seq !== modelSeq) { return false; }
+      $("ai-model-refresh").disabled = false;
+      var list = (data && data.models) || [];
+      if (!list.length) {
+        showModelText(wanted(), "No models were listed. Type a model name instead.");
+        return false;
+      }
+      showModelSelect(list, wanted());
+      return true;
+    }, function (err) {
+      if (seq !== modelSeq) { return false; }
+      $("ai-model-refresh").disabled = false;
+      showModelText(wanted(), "Could not load the model list: " + errorText(err) +
+        " You can type a model name instead.");
+      return false;
+    });
+  }
+
+  function syncKeyField(p) {
+    $("ai-key-row").hidden = !p.needs_key;
+    $("ai-key-note").hidden = !p.needs_key;
+    $("ai-key").value = "";
+    $("ai-key").placeholder = p.has_key ? "Saved - leave blank to keep" : "Paste your API key";
+    $("ai-key-clear").hidden = !p.has_key;
+  }
+
+  function fillProviderFields() {
+    var p = providerById($("ai-provider").value);
+    if (!p) { return; }
+    syncKeyField(p);
+    $("ai-base-url").value = p.base_url || "";
+    $("ai-privacy").textContent = privacyText(p);
+    settingsStatus("");
+    showModelText(p.model || p.default_model || "", "");
+    loadModels(p);
+  }
+
+  function openSettings() {
+    var select = $("ai-provider");
+    select.textContent = "";
+    ai.providers.forEach(function (p) {
+      var option = document.createElement("option");
+      option.value = p.id;
+      option.textContent = p.name;
+      select.appendChild(option);
+    });
+    select.value = activeProvider() ? ai.provider : ai.providers[0].id;
+    $("ai-settings").hidden = false;
+    fillProviderFields();
+    updateAsk();
+    select.focus();
+  }
+
+  function closeSettings() {
+    modelSeq++;
+    $("ai-settings").hidden = true;
+    updateAsk();
+  }
+
+  function settingsBusy(busy) {
+    $("ai-save").disabled = busy;
+    $("ai-key-clear").disabled = busy;
+    $("ai-provider").disabled = busy;
+  }
+
+  $("ai-setup").addEventListener("click", openSettings);
+  $("ai-settings-toggle").addEventListener("click", function () {
+    if ($("ai-settings").hidden) { openSettings(); } else { closeSettings(); }
+  });
+  $("ai-cancel").addEventListener("click", function () {
+    closeSettings();
+    if (aiReady()) { $("ai-settings-toggle").focus(); } else { $("ai-setup").focus(); }
+  });
+  $("ai-provider").addEventListener("change", fillProviderFields);
+  $("ai-model-refresh").addEventListener("click", function () {
+    var p = providerById($("ai-provider").value);
+    if (p) { loadModels(p); }
+  });
+
+  $("ai-settings").addEventListener("submit", function (event) {
+    event.preventDefault();
+    var id = $("ai-provider").value, p = providerById(id);
+    if (!p) { return; }
+    var key = trim($("ai-key").value), model = modelValue(), wasListed = modelsListed;
+    if (p.needs_key && !key && !p.has_key) {
+      settingsStatus("Enter your " + p.name + " API key first.");
+      $("ai-key").focus();
+      return;
+    }
+    var body = { provider: id, base_url: trim($("ai-base-url").value) };
+    if (model) { body.model = model; }
+    if (p.needs_key && key) { body.api_key = key; }
+    settingsBusy(true);
+    settingsStatus("Saving…");
+    api("/api/ai/settings", body).then(function (data) {
+      if (!data || !data.providers) { throw new Error("Unexpected reply from the program."); }
+      ai = data;
+      var saved = providerById(id) || p;
+      syncKeyField(saved);
+      updateAsk();
+      return loadModels(saved).then(function (listed) {
+        settingsBusy(false);
+        if ($("ai-settings").hidden) { return; }
+        if (listed && !wasListed) {
+          // The list only became available with this save; let them choose.
+          settingsStatus("Saved. The model list is now available: pick a model and save again, or cancel to keep the current one.");
+        } else {
+          closeSettings();
+          $("ai-question").focus();
+        }
+      });
+    }).catch(function (err) {
+      settingsBusy(false);
+      settingsStatus("Could not save: " + errorText(err));
+    });
+  });
+
+  $("ai-key-clear").addEventListener("click", function () {
+    var id = $("ai-provider").value;
+    settingsBusy(true);
+    api("/api/ai/settings", { provider: id, clear_key: true }).then(function (data) {
+      if (!data || !data.providers) { throw new Error("Unexpected reply from the program."); }
+      ai = data;
+      settingsBusy(false);
+      fillProviderFields();
+      settingsStatus("Saved key removed.");
+      updateAsk();
+    }).catch(function (err) {
+      settingsBusy(false);
+      settingsStatus("Could not remove the key: " + errorText(err));
+    });
+  });
+
+  api("/api/ai/settings").then(function (data) {
+    if (!data || !data.providers || !data.providers.length) { return; }
+    ai = data;
+    updateAsk();
+  }).catch(function () {});   // older server: leave the feature hidden
 
   function updateHint() {
     var chosen = models.filter(function (m) { return m.name === $("model").value; })[0];

@@ -6,6 +6,8 @@ clean, readable transcript — in your browser, on your own computer.
 - **Private.** The audio is downloaded and transcribed locally with
   [Whisper](https://github.com/openai/whisper). Nothing is uploaded, and no
   account or API key is needed.
+- **Ask questions (optional).** Connect Claude, ChatGPT or a local Ollama
+  model to summarise a transcript or answer questions about it.
 - **Simple.** Double-click one file to start. A page opens in your browser;
   paste a link and press **Transcribe**.
 - **Readable.** The text is grouped into paragraphs, with optional timestamps,
@@ -72,6 +74,27 @@ Apple Silicon Mac. Bigger models and older computers are slower.
 The spoken language is detected automatically. If a video starts with music or
 switches language, pick the language yourself for a better result.
 
+## Ask questions about a transcript (optional)
+
+Once a transcript is ready, an **Ask about this transcript** panel appears
+under it. Connect an AI assistant once, then ask for a summary, the key
+points, or anything else about the video.
+
+| Assistant           | What you need                                                        | Where the text goes        |
+|---------------------|----------------------------------------------------------------------|----------------------------|
+| Claude (Anthropic)  | An API key from [console.anthropic.com](https://console.anthropic.com/) | Sent to Anthropic          |
+| ChatGPT (OpenAI)    | An API key from [platform.openai.com](https://platform.openai.com/)  | Sent to OpenAI             |
+| Ollama              | [Ollama](https://ollama.com/) installed, with a model pulled         | Stays on this computer     |
+
+This is the one feature that can send text off your computer, and only when
+you set it up and ask a question: the transcript and your questions go to the
+assistant you chose, and usage is billed to your own API key. Choose Ollama to
+keep everything local and free. Transcribing never uses any of these.
+
+Your key is stored only on this computer, in `~/.local-transcribe/settings.json`
+(readable only by you), and is never shown again in the page. Under
+**Advanced** you can point the ChatGPT option at any OpenAI-compatible service.
+
 ## Where transcripts go
 
 Every finished transcript is also saved as `<title>_<video id>.txt` and `.srt`:
@@ -122,6 +145,7 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 - `webapp.py` — a small web server (Python standard library only) that answers
   on `127.0.0.1` only, so nothing else on your network can reach it.
 - `web/index.html` — the page you see.
+- `ai_chat.py` — the optional connection to Claude, OpenAI or Ollama.
 - `app.py` — entry point of the packaged app (Dock icon, single instance).
 - `tests/` — run with `python -m unittest discover -s tests`.
 

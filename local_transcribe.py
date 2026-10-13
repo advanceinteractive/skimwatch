@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Callable, Optional
 from urllib.parse import urlparse
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # Model downloads work without a Hugging Face account; hide its sign-in nag.
 os.environ.setdefault("HF_HUB_VERBOSITY", "error")

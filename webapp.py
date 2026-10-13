@@ -24,18 +24,22 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Optional
 
+import ai_chat
 import local_transcribe as lt
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 APP_NAME = "Local Transcribe"
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 16 * 1024
+# Questions carry the whole chat so far, so they need more room.
+MAX_ASK_BODY_BYTES = 512 * 1024
 MAX_FINISHED_JOBS = 20
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 FINISHED = {"done", "error", "cancelled"}
@@ -189,6 +193,8 @@ class JobManager:
 class Handler(BaseHTTPRequestHandler):
     server_version = "LocalTranscribe/" + lt.__version__
     manager: JobManager  # set by create_server
+    settings_path: Optional[Path] = None  # None means ai_chat.SETTINGS_PATH
+    settings_lock = threading.Lock()
 
     # -- helpers ----------------------------------------------------------
 
@@ -218,6 +224,26 @@ class Handler(BaseHTTPRequestHandler):
         self._json(403, {"error": "This server only answers on localhost."})
         return False
 
+    def _ai_reply(self, action: Callable[[], dict]) -> None:
+        """Run an AI action and turn its outcome into a JSON reply."""
+        try:
+            payload = action()
+        except ai_chat.AIError as exc:
+            self._json(400, {"error": str(exc)})
+        except Exception:
+            # Details could include private data, so keep this one vague.
+            self._json(500, {"error": "Something went wrong while talking to the AI."})
+        else:
+            self._json(200, payload)
+
+    def _save_ai_settings(self, changes: dict) -> dict:
+        # One at a time, so two saves cannot overwrite each other's changes.
+        with self.settings_lock:
+            settings = ai_chat.update_settings(
+                ai_chat.load_settings(self.settings_path), changes)
+            ai_chat.save_settings(settings, self.settings_path)
+        return ai_chat.public_settings(settings)
+
     # -- routes -----------------------------------------------------------
 
     def do_GET(self) -> None:
@@ -240,6 +266,14 @@ class Handler(BaseHTTPRequestHandler):
                 "languages": [{"code": c, "name": n} for c, n in lt.LANGUAGES],
                 "out_dir": str(self.manager.out_dir),
             })
+        elif path == "/api/ai/settings":
+            self._json(200, ai_chat.public_settings(ai_chat.load_settings(self.settings_path)))
+        elif path == "/api/ai/models":
+            query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            provider = (query.get("provider") or [""])[0]
+            self._ai_reply(lambda: {
+                "models": ai_chat.list_models(
+                    ai_chat.load_settings(self.settings_path), provider)})
         else:
             match = re.fullmatch(r"/api/jobs/([0-9a-f]{12})", path)
             job = self.manager.get(match.group(1)) if match else None
@@ -260,7 +294,9 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = -1
-        if length < 0 or length > MAX_BODY_BYTES:
+        path = self.path.split("?", 1)[0]
+        limit = MAX_ASK_BODY_BYTES if path == "/api/ai/ask" else MAX_BODY_BYTES
+        if length < 0 or length > limit:
             self._json(413, {"error": "Request too large."})
             return
         try:
@@ -271,7 +307,26 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "Invalid JSON."})
             return
 
-        path = self.path.split("?", 1)[0]
+        if path == "/api/ai/settings":
+            self._ai_reply(lambda: self._save_ai_settings(data))
+            return
+
+        if path == "/api/ai/ask":
+            job_id = str(data.get("job_id", ""))
+            job = self.manager.get(job_id) if re.fullmatch(r"[0-9a-f]{12}", job_id) else None
+            if not job:
+                self._json(404, {"error": "That transcript is no longer available."})
+                return
+            with job.lock:
+                result = job.result if job.status == "done" else None
+            if not result:
+                self._json(400, {"error": "The transcript isn't finished yet."})
+                return
+            self._ai_reply(lambda: ai_chat.ask(
+                ai_chat.load_settings(self.settings_path),
+                result["text"], result["title"], data.get("messages")))
+            return
+
         if path == "/api/jobs":
             try:
                 url = lt.validate_url(str(data.get("url", "")))
@@ -322,12 +377,17 @@ def create_server(
     pipeline: Optional[Callable[..., dict]] = None,
     port_attempts: int = 20,
     folder_opener: Callable[[Path], None] = open_folder,
+    settings_path: Optional[Path] = None,
 ) -> LocalServer:
     """Build the server, trying the next ports if the first is taken."""
     manager = JobManager(
         pipeline or lt.run_pipeline, Path(out_dir or lt.DEFAULT_OUT_DIR), folder_opener
     )
-    handler = type("BoundHandler", (Handler,), {"manager": manager})
+    handler = type("BoundHandler", (Handler,), {
+        "manager": manager,
+        "settings_path": Path(settings_path) if settings_path else None,
+        "settings_lock": threading.Lock(),
+    })
     last_error: Optional[OSError] = None
     candidates = [port] if port == 0 else range(port, port + port_attempts)
     for candidate in candidates:
