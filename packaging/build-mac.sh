@@ -48,7 +48,7 @@ echo "==> Running PyInstaller"
     --name "$NAME" \
     --icon "$WORK/icon.icns" \
     --osx-bundle-identifier "io.github.tonyb82.localtranscribe" \
-    --add-data "$ROOT/web/index.html:web" \
+    --add-data "$ROOT/web:web" \
     --collect-data faster_whisper \
     --exclude-module torch \
     --exclude-module tkinter \

@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Transcribe">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="icon" href="/icon.png">
 <title>Local Transcribe</title>
 <style>
   :root {
@@ -109,7 +113,7 @@
 <body>
 <main>
   <h1>Welcome to Local Transcribe</h1>
-  <p class="lead">
+  <p class="lead" id="lead">
     Paste a link to a YouTube video (or a video from most other sites) and get
     a clean, readable transcript. The audio is downloaded and transcribed on
     this computer with Whisper &mdash; nothing is uploaded, and no account or
@@ -264,6 +268,7 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var models = [], current = null, timer = null, jobId = null;
+  var remote = false;  // true when this page is reached through family sharing
 
   var STAGES = {
     queued: ["Waiting to start…", ""],
@@ -281,7 +286,12 @@
     };
     return fetch(path, opts).then(function (res) {
       return res.json().then(function (data) {
-        if (!res.ok) { throw new Error(data.error || ("Request failed (" + res.status + ")")); }
+        if (res.status === 401 && data.login) { location.reload(); }  // signed out
+        if (!res.ok) {
+          var err = new Error(data.error || ("Request failed (" + res.status + ")"));
+          err.status = res.status;
+          throw err;
+        }
         return data;
       });
     });
@@ -368,8 +378,8 @@
 
     var done = job.status === "done";
     $("toolbar").hidden = !done;
-    $("saved").hidden = !done;
-    if (done) { $("saved-path").textContent = "Saved to " + job.txt_path + " "; }
+    $("saved").hidden = !done || remote;
+    if (done && !remote) { $("saved-path").textContent = "Saved to " + job.txt_path + " "; }
     updateAsk();
   }
 
@@ -385,12 +395,22 @@
       if (job.id !== jobId) { return; }
       render(job);
       if (job.status === "done") { finish(); }
-      else if (job.status === "error") { finish(); showError(job.error); }
-      else if (job.status === "cancelled") { finish(); showError("Cancelled."); }
+      else if (job.status === "error" || job.status === "cancelled") {
+        finish();
+        try { localStorage.removeItem("lt-job"); } catch (e) {}  // don't replay it on reload
+        showError(job.status === "error" ? job.error : "Cancelled.");
+      }
       else { timer = setTimeout(poll, 1000); }
-    }).catch(function () {
+    }).catch(function (err) {
       finish();
-      showError("Lost contact with the program. Is its window still open? Start it again and retry.");
+      if (err && err.status === 404) {
+        // The program was restarted since; that transcript is gone.
+        try { localStorage.removeItem("lt-job"); } catch (e) {}
+        return;
+      }
+      showError(remote
+        ? "Lost contact. Check your connection, and that the computer running this is switched on."
+        : "Lost contact with the program. Is its window still open? Start it again and retry.");
     });
   }
 
@@ -409,7 +429,11 @@
       language: $("language").value
     }).then(function (job) {
       jobId = job.id;
-      try { localStorage.setItem("lt-model", $("model").value); } catch (e) {}
+      try {
+        localStorage.setItem("lt-model", $("model").value);
+        // Lets the page pick the job up again if the phone reloads it.
+        localStorage.setItem("lt-job", job.id);
+      } catch (e) {}
       render(job);
       timer = setTimeout(poll, 600);
     }).catch(function (err) {
@@ -507,7 +531,7 @@
     if (!p) { return ""; }
     if (p.sends_data_off_device) {
       return "When you ask a question, the transcript and your questions are sent to " +
-        p.name + ". Usage is billed to your own API key.";
+        p.name + (remote ? "." : ". Usage is billed to your own API key.");
     }
     return p.name + " runs on this computer, so nothing leaves it.";
   }
@@ -528,12 +552,14 @@
 
   function updateAsk() {
     var show = !!ai && !!current && current.status === "done";
+    // Only the owner can connect an assistant; visitors just use it once it's there.
+    if (remote && !aiReady()) { show = false; }
     $("ask").hidden = !show;
     if (!show) { return; }
     var ready = aiReady(), formOpen = !$("ai-settings").hidden;
     $("ai-intro").hidden = ready || formOpen;
     $("ai-chat").hidden = !ready;
-    $("ai-settings-toggle").hidden = !ready;
+    $("ai-settings-toggle").hidden = !ready || remote;
     $("ai-settings-toggle").setAttribute("aria-expanded", formOpen ? "true" : "false");
     $("ai-chat-note").textContent = ready ? privacyText(activeProvider()) : "";
     updateChatControls();
@@ -844,7 +870,22 @@
     });
     updateHint();
     $("footer").textContent = "Local Transcribe " + config.version +
-      " · runs entirely on this computer · transcripts are saved to " + config.out_dir;
+      (config.remote ? " · shared privately with you"
+        : " · runs entirely on this computer · transcripts are saved to " + config.out_dir);
+    remote = !!config.remote;
+    if (remote) {
+      $("lead").textContent = "Paste a link to a YouTube video (or a video from most other " +
+        "sites) and get a clean, readable transcript. The work is done on the family " +
+        "computer, not on your phone, so you can leave this page and come back.";
+    }
+    var lastJob = null;
+    try { lastJob = localStorage.getItem("lt-job"); } catch (e) {}
+    if (lastJob && /^[0-9a-f]{12}$/.test(lastJob) && !jobId) {
+      // Carry on with (or show again) the last transcription after a reload.
+      jobId = lastJob;
+      setBusy(true);
+      poll();
+    }
   }).catch(function () {
     showError("Could not reach the program. Start it again and reload this page.");
   });

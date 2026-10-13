@@ -15,10 +15,13 @@ is done by local_transcribe.py.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import queue
 import re
+import secrets
 import socketserver
 import subprocess
 import sys
@@ -42,6 +45,15 @@ MAX_BODY_BYTES = 16 * 1024
 MAX_ASK_BODY_BYTES = 512 * 1024
 MAX_FINISHED_JOBS = 20
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
+SHARE_PATH = ai_chat.SETTINGS_PATH.parent / "share.json"
+SESSION_COOKIE = "lt_session"
+SESSION_DAYS = 30
+MAX_LOGIN_FAILURES = 10        # wrong codes allowed ...
+LOGIN_FAILURE_WINDOW = 15 * 60  # ... within this many seconds, from anyone
+# Headers that tunnels and proxies add; a request carrying one came from outside.
+FORWARD_HEADERS = {"forwarded", "x-real-ip"}
+FORWARD_PREFIXES = ("x-forwarded-", "cf-", "tailscale-")
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no look-alikes (0/O, 1/I/L)
 FINISHED = {"done", "error", "cancelled"}
 
 
@@ -54,6 +66,45 @@ def open_folder(path: Path) -> None:
         os.startfile(str(path))  # type: ignore[attr-defined]
     else:
         subprocess.Popen(["xdg-open", str(path)])
+
+
+def _plain_code(code: str) -> str:
+    return re.sub(r"[\s-]", "", code).upper()
+
+
+def new_share_code() -> str:
+    raw = "".join(secrets.choice(CODE_ALPHABET) for _ in range(8))
+    return raw[:4] + "-" + raw[4:]
+
+
+def load_share(path: Optional[Path] = None, code: Optional[str] = None,
+               regenerate: bool = False) -> dict:
+    """
+    Read (or create) the family-sharing access code. Returns {"code", "secret"}.
+    Changing the code also changes the secret, which signs everyone out.
+    """
+    path = Path(path) if path else SHARE_PATH
+    share: dict = {}
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(stored.get("code"), str) and isinstance(stored.get("secret"), str):
+            share = {"code": stored["code"], "secret": stored["secret"]}
+    except (OSError, ValueError, AttributeError):
+        pass
+    if code and len(_plain_code(code)) < 6:
+        raise ValueError("The access code must be at least 6 letters or digits.")
+    wanted = code or (None if share and not regenerate else new_share_code())
+    if wanted and _plain_code(wanted) != _plain_code(share.get("code", "")):
+        share = {"code": wanted.strip(), "secret": secrets.token_hex(32)}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(share), encoding="utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass  # Windows
+        os.replace(tmp, path)
+    return share
 
 
 class Job:
@@ -195,24 +246,117 @@ class Handler(BaseHTTPRequestHandler):
     manager: JobManager  # set by create_server
     settings_path: Optional[Path] = None  # None means ai_chat.SETTINGS_PATH
     settings_lock = threading.Lock()
+    share: Optional[dict] = None  # {"code", "secret"} while family sharing is on
+    login_failures: list = []
+    login_lock = threading.Lock()
 
     # -- helpers ----------------------------------------------------------
 
     def log_message(self, format: str, *args) -> None:  # keep the console quiet
         pass
 
-    def _send(self, status: int, body: bytes, content_type: str) -> None:
+    def _send(self, status: int, body: bytes, content_type: str,
+              headers: Optional[dict] = None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
 
-    def _json(self, status: int, payload: dict) -> None:
+    def _json(self, status: int, payload: dict, headers: Optional[dict] = None) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self._send(status, body, "application/json; charset=utf-8")
+        self._send(status, body, "application/json; charset=utf-8", headers)
+
+    def _file(self, name: str, content_type: str) -> None:
+        try:
+            body = (WEB_DIR / name).read_bytes()
+        except OSError:
+            self._json(500, {"error": f"web/{name} is missing."})
+            return
+        self._send(200, body, content_type)
+
+    # -- family sharing ---------------------------------------------------
+
+    def _host_name(self) -> str:
+        host = self.headers.get("Host", "")
+        return host.rsplit(":", 1)[0] if not host.endswith("]") else host
+
+    def _is_remote(self) -> bool:
+        """True for a request that reached us through a tunnel, not this computer."""
+        if not self.share:
+            return False
+        if self._host_name() not in ALLOWED_HOSTS:
+            return True
+        return any(
+            name.lower() in FORWARD_HEADERS or name.lower().startswith(FORWARD_PREFIXES)
+            for name in self.headers.keys())
+
+    def _session_token(self) -> str:
+        return hmac.new(self.share["secret"].encode(), b"session", hashlib.sha256).hexdigest()
+
+    def _logged_in(self) -> bool:
+        for part in self.headers.get("Cookie", "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == SESSION_COOKIE:
+                return hmac.compare_digest(value, self._session_token())
+        return False
+
+    def _gate(self, method: str, path: str) -> bool:
+        """Decide whether this request may go on. Replies itself when it may not."""
+        if not self.share:
+            return self._host_ok()
+        if not self._is_remote() or self._logged_in():
+            return True
+        if (method, path) == ("POST", "/api/login") or path == "/icon.png":
+            return True
+        if method == "GET" and path in ("/", "/index.html"):
+            self._file("login.html", "text/html; charset=utf-8")
+        else:
+            self._json(401, {"error": "Enter the access code first.", "login": True})
+        return False
+
+    def _owner_only(self) -> bool:
+        if not self._is_remote():
+            return True
+        self._json(403, {"error": "Only the owner can do that, on the computer "
+                                  "that runs Local Transcribe."})
+        return False
+
+    def _login(self, data: dict) -> None:
+        if not self.share:
+            self._json(404, {"error": "Not found."})
+            return
+        now = time.time()
+        with self.login_lock:
+            self.login_failures[:] = [t for t in self.login_failures
+                                      if now - t < LOGIN_FAILURE_WINDOW]
+            locked = len(self.login_failures) >= MAX_LOGIN_FAILURES
+        if locked:
+            self._json(429, {"error": "Too many wrong codes. Wait 15 minutes and try again."})
+            return
+        given = _plain_code(str(data.get("code", "")))
+        if not hmac.compare_digest(given.encode(), _plain_code(self.share["code"]).encode()):
+            with self.login_lock:
+                self.login_failures.append(now)
+            self._json(403, {"error": "That code isn't right. Check it and try again."})
+            return
+        cookie = (f"{SESSION_COOKIE}={self._session_token()}; Path=/; HttpOnly; "
+                  f"SameSite=Lax; Max-Age={SESSION_DAYS * 86400}")
+        if self.headers.get("X-Forwarded-Proto", "").lower() == "https":
+            cookie += "; Secure"
+        self._json(200, {"ok": True}, {"Set-Cookie": cookie})
+
+    def _snapshot(self, job: "Job") -> dict:
+        data = job.snapshot()
+        if self._is_remote():
+            # Folder names on the owner's computer are none of a visitor's business.
+            data.pop("txt_path", None)
+            data.pop("srt_path", None)
+        return data
 
     def _host_ok(self) -> bool:
         # Refuse requests addressed to any other name, so a web page elsewhere
@@ -247,28 +391,29 @@ class Handler(BaseHTTPRequestHandler):
     # -- routes -----------------------------------------------------------
 
     def do_GET(self) -> None:
-        if not self._host_ok():
-            return
         path = self.path.split("?", 1)[0]
+        if not self._gate("GET", path):
+            return
         if path in ("/", "/index.html"):
-            try:
-                body = (WEB_DIR / "index.html").read_bytes()
-            except OSError:
-                self._json(500, {"error": "web/index.html is missing."})
-                return
-            self._send(200, body, "text/html; charset=utf-8")
+            self._file("index.html", "text/html; charset=utf-8")
+        elif path == "/icon.png":
+            self._file("icon.png", "image/png")
         elif path == "/api/config":
+            remote = self._is_remote()
             self._json(200, {
                 "app": APP_NAME,
                 "version": lt.__version__,
                 "models": [{"name": n, "description": d} for n, d in lt.MODELS],
                 "default_model": lt.DEFAULT_MODEL,
                 "languages": [{"code": c, "name": n} for c, n in lt.LANGUAGES],
-                "out_dir": str(self.manager.out_dir),
+                "out_dir": "" if remote else str(self.manager.out_dir),
+                "remote": remote,
             })
         elif path == "/api/ai/settings":
             self._json(200, ai_chat.public_settings(ai_chat.load_settings(self.settings_path)))
         elif path == "/api/ai/models":
+            if not self._owner_only():
+                return
             query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             provider = (query.get("provider") or [""])[0]
             self._ai_reply(lambda: {
@@ -278,12 +423,12 @@ class Handler(BaseHTTPRequestHandler):
             match = re.fullmatch(r"/api/jobs/([0-9a-f]{12})", path)
             job = self.manager.get(match.group(1)) if match else None
             if job:
-                self._json(200, job.snapshot())
+                self._json(200, self._snapshot(job))
             else:
                 self._json(404, {"error": "Not found."})
 
     def do_POST(self) -> None:
-        if not self._host_ok():
+        if not self._gate("POST", self.path.split("?", 1)[0]):
             return
         # Browsers cannot send JSON cross-site without permission, so this
         # stops other web pages from starting jobs.
@@ -307,8 +452,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "Invalid JSON."})
             return
 
+        if path == "/api/login":
+            self._login(data)
+            return
+
         if path == "/api/ai/settings":
-            self._ai_reply(lambda: self._save_ai_settings(data))
+            if self._owner_only():
+                self._ai_reply(lambda: self._save_ai_settings(data))
             return
 
         if path == "/api/ai/ask":
@@ -339,10 +489,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "Unknown language."})
                 return
             job = self.manager.submit(url, model, language)
-            self._json(202, job.snapshot())
+            self._json(202, self._snapshot(job))
             return
 
         if path == "/api/open-folder":
+            if not self._owner_only():
+                return
             try:
                 self.manager.folder_opener(self.manager.out_dir)
             except Exception as exc:
@@ -355,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
         job = self.manager.get(match.group(1)) if match else None
         if job:
             job.cancel.set()
-            self._json(200, job.snapshot())
+            self._json(200, self._snapshot(job))
         else:
             self._json(404, {"error": "Not found."})
 
@@ -378,6 +530,7 @@ def create_server(
     port_attempts: int = 20,
     folder_opener: Callable[[Path], None] = open_folder,
     settings_path: Optional[Path] = None,
+    share: Optional[dict] = None,
 ) -> LocalServer:
     """Build the server, trying the next ports if the first is taken."""
     manager = JobManager(
@@ -387,6 +540,9 @@ def create_server(
         "manager": manager,
         "settings_path": Path(settings_path) if settings_path else None,
         "settings_lock": threading.Lock(),
+        "share": share,
+        "login_failures": [],
+        "login_lock": threading.Lock(),
     })
     last_error: Optional[OSError] = None
     candidates = [port] if port == 0 else range(port, port + port_attempts)
@@ -408,15 +564,43 @@ def main() -> None:
                         help="Don't open the browser automatically.")
     parser.add_argument("--out", default=str(lt.DEFAULT_OUT_DIR),
                         help="Where transcripts are saved (default: ./transcripts)")
+    parser.add_argument("--share", action="store_true",
+                        help="Family sharing: let people you give the access code to "
+                             "use this through a tunnel (see README).")
+    parser.add_argument("--share-code", default=None,
+                        help="Set your own access code (implies --share).")
+    parser.add_argument("--new-share-code", action="store_true",
+                        help="Make a new access code, signing everyone out (implies --share).")
     args = parser.parse_args()
 
+    share = None
+    if args.share or args.share_code or args.new_share_code:
+        try:
+            share = load_share(code=args.share_code, regenerate=args.new_share_code)
+        except ValueError as exc:
+            parser.error(str(exc))
+
     out_dir = Path(os.path.expanduser(args.out)).resolve()
-    server = create_server(args.port, out_dir)
-    url = f"http://127.0.0.1:{server.server_address[1]}/"
+    server = create_server(args.port, out_dir, share=share)
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/"
 
     print(f"Local Transcribe {lt.__version__} is running.")
     print(f"  Open in your browser : {url}")
     print(f"  Transcripts saved to : {out_dir}")
+    if share:
+        print()
+        print("  FAMILY SHARING IS ON")
+        print(f"  Access code          : {share['code']}")
+        print(f"  Now start your tunnel to port {port} (see README) and send your")
+        print("  family the tunnel's web address and this code.")
+        print("  This computer must stay on; it will not sleep while this runs.")
+        if sys.platform == "darwin":
+            # Keep the Mac awake for as long as this program is alive.
+            try:
+                subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+            except OSError:
+                pass
     print("  Press Ctrl+C (or close this window) to stop.", flush=True)
 
     if not args.no_browser:

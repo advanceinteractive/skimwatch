@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Transcribe">
+<link rel="apple-touch-icon" href="/icon.png">
+<title>Local Transcribe</title>
+<style>
+  :root { --bg: #f6f7f9; --card: #fff; --text: #1c2330; --muted: #5f6b7a; --border: #d9dee6;
+          --accent: #c4302b; --error-bg: #fdecec; --error-text: #8f1d1d; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151a; --card: #1b2028; --text: #e7ebf1; --muted: #9aa6b5; --border: #303844;
+            --accent: #e5534b; --error-bg: #3a1d1d; --error-text: #ffb4b4; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 420px; margin: 0 auto; padding: 56px 16px; }
+  h1 { font-size: 1.6rem; margin: 0 0 8px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  input { width: 100%; padding: 12px; font: inherit; font-size: 1.2rem; letter-spacing: 0.08em;
+          text-transform: uppercase; color: var(--text); background: var(--bg);
+          border: 1px solid var(--border); border-radius: 8px; }
+  button { width: 100%; margin-top: 14px; padding: 12px; font: inherit; font-weight: 600; color: #fff;
+           background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  button:disabled { opacity: 0.55; }
+  input:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #error { background: var(--error-bg); color: var(--error-text); border-radius: 8px;
+           padding: 10px 12px; margin-top: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Local Transcribe</h1>
+  <p>Enter the access code you were given to use this.</p>
+  <form id="form" autocomplete="off">
+    <label for="code">Access code</label>
+    <input id="code" type="text" required autofocus autocapitalize="characters"
+           autocorrect="off" spellcheck="false" placeholder="ABCD-2345">
+    <button id="go" type="submit">Continue</button>
+    <div id="error" role="alert" hidden></div>
+  </form>
+</main>
+<script>
+(function () {
+  "use strict";
+  var form = document.getElementById("form"), error = document.getElementById("error");
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var button = document.getElementById("go");
+    button.disabled = true;
+    error.hidden = true;
+    fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: document.getElementById("code").value })
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) { throw new Error(data.error || "Could not check the code."); }
+        location.reload();
+      });
+    }).catch(function (err) {
+      button.disabled = false;
+      error.textContent = err instanceof TypeError
+        ? "Could not reach the program. Is the computer that runs it switched on?" : err.message;
+      error.hidden = false;
+    });
+  });
+})();
+</script>
+</body>
+</html>

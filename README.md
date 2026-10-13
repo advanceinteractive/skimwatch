@@ -95,6 +95,39 @@ Your key is stored only on this computer, in `~/.local-transcribe/settings.json`
 (readable only by you), and is never shown again in the page. Under
 **Advanced** you can point the ChatGPT option at any OpenAI-compatible service.
 
+## Share with your family (phones included)
+
+You can let people who don't live with you use your copy from their phones.
+The program keeps running on your computer at home, so YouTube links work, and
+they reach it through a private web address protected by an access code.
+
+1. **Start sharing.** Double-click `share-mac.command` (or run
+   `python webapp.py --share`). It prints an **access code** such as
+   `KQ7M-2XDF` and keeps the Mac awake while it runs.
+2. **Open a tunnel** from the internet to the program. Either:
+   - **[Tailscale](https://tailscale.com/) Funnel** (free; the address stays
+     the same): install Tailscale, sign in, then run `tailscale funnel 8765`.
+     It shows an address like `https://your-mac.your-name.ts.net`.
+   - **[Cloudflare](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) quick tunnel**
+     (free, no account; the address changes every time you start it):
+     `cloudflared tunnel --url http://127.0.0.1:8765`.
+3. **Send your family the address and the access code.** They open the
+   address, type the code once, and can then paste video links. On an iPhone,
+   **Share → Add to Home Screen** makes it open like an app.
+
+Good to know:
+
+- Your computer must be on, awake and running both the program and the tunnel.
+- It transcribes one video at a time; others wait their turn.
+- Visitors can transcribe and, if you have connected an AI assistant, ask
+  questions (billed to your key). They cannot see or change your settings, your
+  API key, or where files are stored. Their transcripts are also saved in your
+  transcripts folder.
+- Anyone with both the address and the code can use it. To lock everyone out
+  and get a new code, run `python webapp.py --share --new-share-code`. Ten
+  wrong codes in 15 minutes pauses sign-in for everyone for 15 minutes.
+- Sharing is available when running from source, not in the packaged Mac app.
+
 ## Where transcripts go
 
 Every finished transcript is also saved as `<title>_<video id>.txt` and `.srt`:
@@ -146,6 +179,8 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
   on `127.0.0.1` only, so nothing else on your network can reach it.
 - `web/index.html` — the page you see.
 - `ai_chat.py` — the optional connection to Claude, OpenAI or Ollama.
+- `web/login.html`, `share-mac.command` — the access-code page and launcher for
+  family sharing.
 - `app.py` — entry point of the packaged app (Dock icon, single instance).
 - `tests/` — run with `python -m unittest discover -s tests`.
 
