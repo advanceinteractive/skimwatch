@@ -1,2 +1,2 @@
-yt-dlp>=2024.1.0
-openai-whisper>=20231117
+yt-dlp>=2025.1.15
+faster-whisper>=1.1.0

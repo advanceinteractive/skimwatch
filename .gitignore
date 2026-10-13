@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+transcripts/
+.DS_Store
+.idea/
+.claude/

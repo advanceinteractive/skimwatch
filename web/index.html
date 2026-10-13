@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Transcribe</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1c2330; --muted: #5f6b7a;
+    --border: #d9dee6; --accent: #c4302b; --accent-text: #ffffff;
+    --soft: #eef1f5; --error-bg: #fdecec; --error-text: #8f1d1d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a; --card: #1b2028; --text: #e7ebf1; --muted: #9aa6b5;
+      --border: #303844; --accent: #e5534b; --accent-text: #ffffff;
+      --soft: #242b35; --error-bg: #3a1d1d; --error-text: #ffb4b4;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 2rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.3rem; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .lead { color: var(--muted); margin: 0 0 24px; max-width: 62ch; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+  }
+  label { font-size: 0.85rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > .grow { flex: 1 1 260px; min-width: 0; }
+  input[type=url], select {
+    width: 100%; padding: 11px 12px; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  }
+  input[type=url]:focus, select:focus, button:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  button {
+    font: inherit; padding: 11px 18px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--soft); color: var(--text);
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button.small { padding: 7px 12px; font-size: 0.9rem; }
+  .options { margin-top: 14px; }
+  .options > div { flex: 1 1 200px; }
+  .hint { font-size: 0.85rem; color: var(--muted); margin: 6px 0 0; }
+  .bar { height: 8px; background: var(--soft); border-radius: 999px; overflow: hidden; margin: 10px 0 4px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.4s ease; }
+  .bar.busy > div { width: 30%; animation: slide 1.4s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .bar.busy > div { animation: none; width: 100%; opacity: 0.4; } }
+  .status-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .error { background: var(--error-bg); color: var(--error-text); border-color: transparent; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: 0.9rem; margin: 0 0 14px; overflow-wrap: anywhere; }
+  .meta a { color: inherit; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .toolbar .check { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--muted); margin: 0 6px 0 0; }
+  #transcript p { margin: 0 0 1em; overflow-wrap: anywhere; }
+  #transcript .ts {
+    font-variant-numeric: tabular-nums; font-size: 0.8rem; color: var(--muted);
+    background: var(--soft); border-radius: 4px; padding: 1px 6px; margin-right: 8px;
+  }
+  #transcript.no-ts .ts { display: none; }
+  .saved { font-size: 0.85rem; color: var(--muted); margin: 8px 0 0; overflow-wrap: anywhere; }
+  footer { color: var(--muted); font-size: 0.85rem; text-align: center; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Welcome to Local Transcribe</h1>
+  <p class="lead">
+    Paste a link to a YouTube video (or a video from most other sites) and get
+    a clean, readable transcript. The audio is downloaded and transcribed on
+    this computer with Whisper &mdash; nothing is uploaded, and no account or
+    API key is needed.
+  </p>
+
+  <form id="form" class="card" autocomplete="off">
+    <label for="url">Video link</label>
+    <div class="row">
+      <div class="grow">
+        <input id="url" type="url" inputmode="url" required
+               placeholder="https://www.youtube.com/watch?v=..." autofocus>
+      </div>
+      <button id="go" class="primary" type="submit">Transcribe</button>
+    </div>
+    <div class="row options">
+      <div>
+        <label for="model">Quality</label>
+        <select id="model"></select>
+      </div>
+      <div>
+        <label for="language">Spoken language</label>
+        <select id="language"></select>
+      </div>
+    </div>
+    <p class="hint" id="model-hint"></p>
+  </form>
+
+  <div id="error" class="card error" role="alert" hidden></div>
+
+  <section id="progress" class="card" hidden aria-live="polite">
+    <div class="status-line">
+      <strong id="stage">Starting&hellip;</strong>
+      <button id="cancel" class="small" type="button">Cancel</button>
+    </div>
+    <div id="bar" class="bar busy"><div></div></div>
+    <p class="hint" id="stage-hint"></p>
+  </section>
+
+  <section id="result" class="card" hidden>
+    <h2 id="title"></h2>
+    <p class="meta" id="meta"></p>
+    <div class="toolbar" id="toolbar" hidden>
+      <label class="check"><input id="show-ts" type="checkbox"> Show timestamps</label>
+      <button id="copy" class="small" type="button">Copy text</button>
+      <button id="dl-txt" class="small" type="button">Download .txt</button>
+      <button id="dl-srt" class="small" type="button">Download .srt</button>
+    </div>
+    <div id="transcript" class="no-ts"></div>
+    <p class="saved" id="saved" hidden></p>
+  </section>
+
+  <footer id="footer">Runs entirely on this computer.</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var models = [], current = null, timer = null, jobId = null;
+
+  var STAGES = {
+    queued: ["Waiting to start…", ""],
+    downloading: ["Downloading audio…", ""],
+    loading_model: ["Loading the speech model…",
+      "The first time you use a quality level, its model is downloaded. This can take a few minutes."],
+    transcribing: ["Transcribing…", "Text appears below as it is recognised. Long videos take a while."]
+  };
+
+  function api(path, body) {
+    var opts = body === undefined ? {} : {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    };
+    return fetch(path, opts).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) { throw new Error(data.error || ("Request failed (" + res.status + ")")); }
+        return data;
+      });
+    });
+  }
+
+  function clock(seconds) {
+    var t = Math.max(0, Math.floor(seconds || 0));
+    var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+    var ss = (s < 10 ? "0" : "") + s;
+    return h ? h + ":" + (m < 10 ? "0" : "") + m + ":" + ss : m + ":" + ss;
+  }
+
+  function showError(message) {
+    $("error").textContent = message;
+    $("error").hidden = !message;
+  }
+
+  function setBusy(busy) {
+    $("go").disabled = busy;
+    $("url").disabled = busy;
+    $("model").disabled = busy;
+    $("language").disabled = busy;
+    $("progress").hidden = !busy;
+  }
+
+  function renderParagraphs(paragraphs) {
+    var box = $("transcript");
+    // Only the last paragraph changes between polls; reuse the rest.
+    while (box.children.length > paragraphs.length) { box.removeChild(box.lastChild); }
+    paragraphs.forEach(function (para, i) {
+      var p = box.children[i];
+      if (!p) {
+        p = document.createElement("p");
+        var ts = document.createElement("span");
+        ts.className = "ts";
+        p.appendChild(ts);
+        p.appendChild(document.createTextNode(""));
+        box.appendChild(p);
+      }
+      var stamp = clock(para.start);
+      if (p.firstChild.textContent !== stamp) { p.firstChild.textContent = stamp; }
+      if (p.lastChild.nodeValue !== para.text) { p.lastChild.nodeValue = para.text; }
+    });
+  }
+
+  function plainText(job, withTimestamps) {
+    var lines = [job.title, "Source: " + job.webpage_url, ""];
+    job.paragraphs.forEach(function (para) {
+      lines.push((withTimestamps ? "[" + clock(para.start) + "] " : "") + para.text, "");
+    });
+    return lines.join("\n").replace(/\n+$/, "\n");
+  }
+
+  function render(job) {
+    current = job;
+    var hasText = job.paragraphs && job.paragraphs.length > 0;
+    $("result").hidden = !(job.title || hasText);
+    $("title").textContent = job.title || "";
+
+    var meta = $("meta");
+    meta.textContent = "";
+    var bits = [];
+    if (job.uploader) { bits.push(job.uploader); }
+    if (job.duration) { bits.push(clock(job.duration)); }
+    if (job.language) { bits.push("language: " + job.language); }
+    if (bits.length) { meta.appendChild(document.createTextNode(bits.join(" · ") + " · ")); }
+    if (job.webpage_url) {
+      var a = document.createElement("a");
+      a.href = job.webpage_url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = "open video";
+      meta.appendChild(a);
+    }
+
+    renderParagraphs(job.paragraphs || []);
+
+    var stage = STAGES[job.status];
+    if (stage) {
+      var pct = typeof job.progress === "number" ? Math.round(job.progress * 100) : null;
+      $("stage").textContent = stage[0] + (pct !== null ? " " + pct + "%" : "");
+      $("stage-hint").textContent = stage[1];
+      $("bar").classList.toggle("busy", pct === null);
+      $("bar").firstElementChild.style.width = pct === null ? "" : pct + "%";
+    }
+
+    var done = job.status === "done";
+    $("toolbar").hidden = !done;
+    $("saved").hidden = !done;
+    if (done) { $("saved").textContent = "Saved to " + job.txt_path; }
+  }
+
+  function finish() {
+    clearTimeout(timer);
+    timer = null; jobId = null;
+    setBusy(false);
+  }
+
+  function poll() {
+    if (!jobId) { return; }
+    api("/api/jobs/" + jobId).then(function (job) {
+      if (job.id !== jobId) { return; }
+      render(job);
+      if (job.status === "done") { finish(); }
+      else if (job.status === "error") { finish(); showError(job.error); }
+      else if (job.status === "cancelled") { finish(); showError("Cancelled."); }
+      else { timer = setTimeout(poll, 1000); }
+    }).catch(function () {
+      finish();
+      showError("Lost contact with the program. Is its window still open? Start it again and retry.");
+    });
+  }
+
+  $("form").addEventListener("submit", function (event) {
+    event.preventDefault();
+    showError("");
+    $("result").hidden = true;
+    $("transcript").textContent = "";
+    $("cancel").disabled = false;
+    setBusy(true);
+    render({ status: "queued", paragraphs: [] });
+    api("/api/jobs", {
+      url: $("url").value,
+      model: $("model").value,
+      language: $("language").value
+    }).then(function (job) {
+      jobId = job.id;
+      try { localStorage.setItem("lt-model", $("model").value); } catch (e) {}
+      render(job);
+      timer = setTimeout(poll, 600);
+    }).catch(function (err) {
+      finish();
+      showError(err.message);
+    });
+  });
+
+  $("cancel").addEventListener("click", function () {
+    if (!jobId) { return; }
+    $("cancel").disabled = true;
+    $("stage").textContent = "Cancelling…";
+    api("/api/jobs/" + jobId + "/cancel", {}).catch(function () {});
+  });
+
+  $("show-ts").addEventListener("change", function () {
+    $("transcript").classList.toggle("no-ts", !this.checked);
+  });
+
+  function flash(button, text) {
+    var original = button.textContent;
+    button.textContent = text;
+    setTimeout(function () { button.textContent = original; }, 1500);
+  }
+
+  $("copy").addEventListener("click", function () {
+    var button = this, text = plainText(current, $("show-ts").checked);
+    function fallback() {
+      var area = document.createElement("textarea");
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(area);
+      flash(button, ok ? "Copied" : "Copy failed");
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { flash(button, "Copied"); }, fallback);
+    } else { fallback(); }
+  });
+
+  function download(name, text) {
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+  }
+
+  $("dl-txt").addEventListener("click", function () {
+    download(current.base_name + ".txt", plainText(current, $("show-ts").checked));
+  });
+  $("dl-srt").addEventListener("click", function () {
+    download(current.base_name + ".srt", current.srt);
+  });
+
+  function updateHint() {
+    var chosen = models.filter(function (m) { return m.name === $("model").value; })[0];
+    $("model-hint").textContent = chosen ? chosen.description : "";
+  }
+  $("model").addEventListener("change", updateHint);
+
+  api("/api/config").then(function (config) {
+    models = config.models;
+    var saved = null;
+    try { saved = localStorage.getItem("lt-model"); } catch (e) {}
+    models.forEach(function (m) {
+      var option = document.createElement("option");
+      option.value = m.name;
+      option.textContent = m.name.charAt(0).toUpperCase() + m.name.slice(1);
+      $("model").appendChild(option);
+    });
+    var names = models.map(function (m) { return m.name; });
+    $("model").value = names.indexOf(saved) >= 0 ? saved : config.default_model;
+    config.languages.forEach(function (l) {
+      var option = document.createElement("option");
+      option.value = l.code;
+      option.textContent = l.name;
+      $("language").appendChild(option);
+    });
+    updateHint();
+    $("footer").textContent = "Local Transcribe " + config.version +
+      " · runs entirely on this computer · transcripts are saved to " + config.out_dir;
+  }).catch(function () {
+    showError("Could not reach the program. Start it again and reload this page.");
+  });
+})();
+</script>
+</body>
+</html>
