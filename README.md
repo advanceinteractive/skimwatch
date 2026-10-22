@@ -234,8 +234,12 @@ as described in [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE) © 2026 Anthony Boutsikoudis
 
-The source code in this repository is MIT licensed. The packaged Mac app also
-contains third-party libraries under their own licenses, listed in
-`THIRD_PARTY_NOTICES.txt` inside the app (`Contents/Resources`). Some of those,
-pulled in by the audio library's FFmpeg build, are GPL licensed; see that file
-for details and source links.
+The source code in this repository is MIT licensed.
+
+The **Mac app download** also contains third-party libraries, listed with
+their licenses and source links in `THIRD_PARTY_NOTICES.txt` inside the app
+(`Contents/Resources`). Two of them, the x264 and x265 encoders that come with
+the audio library's FFmpeg build, are GPL licensed. The Mac app is therefore
+distributed under the terms of the GNU GPL version 2 or later as a combined
+work, while the source code of Local Transcribe itself stays MIT. This changes
+nothing for people who use the app or run it from source.

@@ -62,6 +62,7 @@ APP="$WORK/dist/$NAME.app"
 echo "==> Writing third-party notices"
 "$WORK/venv/bin/python" packaging/third_party_notices.py "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt" "$APP"
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
+cp packaging/GPL-2.0.txt "$APP/Contents/Resources/GPL-2.0.txt"
 
 # Editing Info.plist invalidates PyInstaller's signature; sign again (ad hoc).
 codesign --force --deep --sign - "$APP"
@@ -72,4 +73,6 @@ rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 
 echo "==> Done: $ZIP ($(du -h "$ZIP" | cut -f1))"
+echo
+echo "    Release notes for GitHub: see packaging/RELEASE_NOTES_TEMPLATE.md"
 echo "    App for testing: $APP"

@@ -13,6 +13,7 @@ Run it with the same Python environment PyInstaller used, so the list matches
 what was bundled.
 """
 
+import re
 import sys
 from importlib import metadata
 from pathlib import Path
@@ -77,6 +78,17 @@ def license_text(dist: metadata.Distribution) -> str:
     return "\n".join(texts).strip()
 
 
+def ffmpeg_version(app: Path) -> str:
+    """The FFmpeg version string embedded in the bundled libavcodec, or ""."""
+    for lib in app.rglob("libavcodec*"):
+        if lib.is_file() and lib.stat().st_size > 100_000:
+            data = lib.read_bytes()
+            match = re.search(rb"FFmpeg version ([0-9][0-9.]*[0-9])", data)
+            if match:
+                return match.group(1).decode()
+    return ""
+
+
 def native_section(app: Optional[Path]) -> tuple:
     """List the native libraries actually inside the app. Returns (text, problems)."""
     if not app:
@@ -92,12 +104,24 @@ def native_section(app: Optional[Path]) -> tuple:
     lines = ["Native libraries bundled in this app", "------------------------------------"]
     for _, component, lic, source in sorted(found.values(), key=lambda e: e[1].lower()):
         lines.append(f"- {component}: {lic}. Source: {source}")
+    version = ffmpeg_version(app)
+    if version:
+        lines += ["",
+                  f"The FFmpeg libraries and the codec libraries above are FFmpeg {version}",
+                  "as built by the PyAV project. The exact sources and build scripts are",
+                  f"published at https://github.com/PyAV-Org/pyav-ffmpeg/releases/tag/{version}-1",
+                  "(see that page for the matching build number)."]
     gpl = [c for _, c, lic, _ in found.values() if lic in COPYLEFT]
     if gpl:
-        lines += ["", "NOTE: " + ", ".join(sorted(gpl)) + " are licensed under the GNU GPL and",
-                  "were bundled by PyAV's FFmpeg build. Distributing this app therefore",
-                  "carries GPL obligations, including making the corresponding source code",
-                  "of those components available (see the links above)."]
+        lines += ["",
+                  "GPL notice: " + ", ".join(sorted(gpl)) + " are licensed under the GNU GPL",
+                  "version 2 or later. Because they are part of this app, the app as a whole",
+                  "is distributed to you under the terms of the GNU GPL version 2 or later",
+                  "as a combined work. The source code of Local Transcribe itself remains",
+                  "available under the MIT License at",
+                  "https://github.com/tonyb82/local-transcribe , and the source code of",
+                  "every bundled component is available at the links in this file.",
+                  "The full text of the GPL is in GPL-2.0.txt next to this file."]
     if unknown:
         lines += ["", "Not identified (check before release): " + ", ".join(unknown)]
     problems = ([f"GPL components bundled: {', '.join(sorted(gpl))}"] if gpl else []) + \
@@ -134,7 +158,7 @@ def main(out: str, app: Optional[Path] = None) -> None:
     Path(out).write_text("\n".join(parts), encoding="utf-8")
     print(f"Wrote {out} ({len(dists)} Python packages)")
     for problem in problems:
-        print(f"WARNING: {problem}. Review the licensing before publishing this build.")
+        print(f"NOTE: {problem}. Make sure the release notes carry the GPL sentence from the README.")
 
 
 if __name__ == "__main__":

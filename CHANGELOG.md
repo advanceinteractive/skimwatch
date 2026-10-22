@@ -15,7 +15,10 @@ First public release.
   network addresses are refused.
 - **Family sharing:** visitors can ask the AI assistant questions only when the
   owner turns it on (off by default).
-- Mac app: ships `LICENSE.txt` and an itemised `THIRD_PARTY_NOTICES.txt`.
+- Mac app: ships `LICENSE.txt` and an itemised `THIRD_PARTY_NOTICES.txt` with
+  source links. The app download is distributed under GPL-2.0-or-later terms
+  as a combined work because it bundles x264 and x265; the source code of
+  Local Transcribe stays MIT.
 - Project: tests run on macOS, Windows and Linux in GitHub Actions;
   `SECURITY.md`, `CONTRIBUTING.md`, screenshots.
 
