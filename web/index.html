@@ -78,6 +78,7 @@
   .ask-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
   .ask-head h2 { margin: 0; }
   #ai-intro p { margin: 0 0 14px; max-width: 62ch; }
+  #ai-settings .check { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; color: inherit; }
   #ai-settings { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0 16px; margin: 8px 0 16px; }
   .field { margin-bottom: 14px; }
   .field .row { align-items: flex-start; }
@@ -214,6 +215,12 @@
           <button id="ai-model-refresh" type="button">Refresh</button>
         </div>
         <p class="hint" id="ai-model-hint"></p>
+      </div>
+      <div class="field">
+        <label class="check"><input id="ai-visitors" type="checkbox">
+          Let people I share with ask questions too</label>
+        <p class="hint">Only matters when family sharing is on. Their questions use
+          your API key and are billed to you.</p>
       </div>
       <details class="field">
         <summary>Advanced</summary>
@@ -553,7 +560,7 @@
   function updateAsk() {
     var show = !!ai && !!current && current.status === "done";
     // Only the owner can connect an assistant; visitors just use it once it's there.
-    if (remote && !aiReady()) { show = false; }
+    if (remote && !(aiReady() && ai.visitors_can_ask)) { show = false; }
     $("ask").hidden = !show;
     if (!show) { return; }
     var ready = aiReady(), formOpen = !$("ai-settings").hidden;
@@ -751,6 +758,7 @@
       select.appendChild(option);
     });
     select.value = activeProvider() ? ai.provider : ai.providers[0].id;
+    $("ai-visitors").checked = !!ai.visitors_can_ask;
     $("ai-settings").hidden = false;
     fillProviderFields();
     updateAsk();
@@ -793,7 +801,8 @@
       $("ai-key").focus();
       return;
     }
-    var body = { provider: id, base_url: trim($("ai-base-url").value) };
+    var body = { provider: id, base_url: trim($("ai-base-url").value),
+                 visitors_can_ask: $("ai-visitors").checked };
     if (p.uses_workspace) { body.workspace_id = trim($("ai-workspace").value); }
     if (model) { body.model = model; }
     if (p.needs_key && key) { body.api_key = key; }

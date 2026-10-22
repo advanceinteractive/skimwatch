@@ -108,6 +108,8 @@ class AIError(Exception):
 def default_settings() -> dict:
     return {
         "provider": "",
+        # Family sharing: may visitors ask questions (billed to the owner's key)?
+        "visitors_can_ask": False,
         "providers": {
             pid: {"api_key": "", "model": "", "base_url": "", "workspace_id": ""}
             for pid in PROVIDER_IDS
@@ -122,6 +124,8 @@ def _normalise(raw: object) -> dict:
         return settings
     if raw.get("provider") in PROVIDERS:
         settings["provider"] = raw["provider"]
+    if isinstance(raw.get("visitors_can_ask"), bool):
+        settings["visitors_can_ask"] = raw["visitors_can_ask"]
     stored = raw.get("providers")
     if isinstance(stored, dict):
         for pid in PROVIDER_IDS:
@@ -192,6 +196,7 @@ def public_settings(settings: dict) -> dict:
     settings = _normalise(settings)
     return {
         "provider": settings["provider"],
+        "visitors_can_ask": settings["visitors_can_ask"],
         "providers": [
             {
                 "id": pid,
@@ -271,6 +276,11 @@ def update_settings(settings: dict, changes: dict) -> dict:
         if len(key) > 500 or any(ch.isspace() or ord(ch) < 33 or ord(ch) > 126 for ch in key):
             raise AIError("That API key doesn't look right. Copy it again without any spaces.")
         entry["api_key"] = key
+
+    if "visitors_can_ask" in changes:
+        if not isinstance(changes["visitors_can_ask"], bool):
+            raise AIError("Invalid setting for shared visitors.")
+        updated["visitors_can_ask"] = changes["visitors_can_ask"]
 
     updated["provider"] = provider_id
     return updated

@@ -1,5 +1,7 @@
 # Local Transcribe
 
+![tests](https://github.com/tonyb82/local-transcribe/actions/workflows/tests.yml/badge.svg)
+
 Paste a link to a YouTube video (or a video from most other sites) and get a
 clean, readable transcript — in your browser, on your own computer.
 
@@ -119,13 +121,16 @@ Good to know:
 
 - Your computer must be on, awake and running both the program and the tunnel.
 - It transcribes one video at a time; others wait their turn.
-- Visitors can transcribe and, if you have connected an AI assistant, ask
-  questions (billed to your key). They cannot see or change your settings, your
-  API key, or where files are stored. Their transcripts are also saved in your
-  transcripts folder.
+- Visitors can transcribe. They can also ask the AI assistant questions if you
+  tick **Let people I share with ask questions too** in **AI settings** (off by
+  default; their questions are billed to your key). They cannot see or change
+  your settings, your API key, or where files are stored, and they cannot submit
+  links to addresses on your home network. Their transcripts are also saved in
+  your transcripts folder.
 - Anyone with both the address and the code can use it. To lock everyone out
   and get a new code, run `python webapp.py --share --new-share-code`. Ten
-  wrong codes in 15 minutes pauses sign-in for everyone for 15 minutes.
+  wrong codes in 15 minutes from one visitor pauses sign-in for that visitor
+  for 15 minutes; one person mistyping does not lock out the others.
 - Sharing is available when running from source, not in the packaged Mac app.
 
 ## Where transcripts go
@@ -201,6 +206,16 @@ Only transcribe videos you have the right to use, and respect the terms of
 service of the sites you download from. Transcripts are machine-generated and
 will contain mistakes; check anything important against the original.
 
+This project is not affiliated with or endorsed by YouTube or Google.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security issues privately
+as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Anthony Boutsikoudis
+
+The packaged Mac app bundles third-party software, including FFmpeg (LGPL);
+their licenses are listed in `THIRD_PARTY_NOTICES.txt` inside the app.

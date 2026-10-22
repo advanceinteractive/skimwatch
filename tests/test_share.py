@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -20,6 +21,21 @@ from test_webapp import fake_pipeline
 CODE = "ABCD-2345"
 TUNNEL = {"X-Forwarded-For": "203.0.113.9", "Host": "family.example.ts.net"}
 
+# Offline stand-in for DNS: names map to fixed addresses.
+FAKE_DNS = {"example.com": "93.184.215.14", "router.example.com": "192.168.1.1",
+            "sneaky.example.com": "::ffff:10.0.0.5"}
+
+
+def fake_resolve(host, port):
+    if host in FAKE_DNS:
+        return [(0, 0, 0, "", (FAKE_DNS[host], 0))]
+    try:
+        import ipaddress
+        ipaddress.ip_address(host)
+        return [(0, 0, 0, "", (host, 0))]
+    except ValueError:
+        raise OSError("not found")
+
 
 class ShareTests(unittest.TestCase):
     def setUp(self):
@@ -29,7 +45,7 @@ class ShareTests(unittest.TestCase):
         self.server = webapp.create_server(
             0, out_dir=Path(tmp.name) / "out", pipeline=fake_pipeline,
             folder_opener=self.opened.append, settings_path=Path(tmp.name) / "settings.json",
-            share={"code": CODE, "secret": "test-secret"})
+            share={"code": CODE, "secret": "test-secret"}, resolver=fake_resolve)
         self.base = "http://127.0.0.1:%d" % self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
@@ -124,6 +140,49 @@ class ShareTests(unittest.TestCase):
             self.assertEqual(self.login("NOPE-NOPE")[0], 403)
         self.assertEqual(self.login("NOPE-NOPE")[0], 429)
         self.assertEqual(self.login()[0], 429)  # even the right code has to wait
+
+    def test_one_visitors_lockout_does_not_lock_out_others(self):
+        for _ in range(webapp.MAX_LOGIN_FAILURES):
+            self.login("NOPE-NOPE")
+        self.assertEqual(self.login()[0], 429)
+        other = {"X-Forwarded-For": "198.51.100.7"}
+        self.assertEqual(self.login(extra=other)[0], 200)
+        cloudflare = {"CF-Connecting-IP": "198.51.100.8"}
+        self.assertEqual(self.login(extra=cloudflare)[0], 200)
+
+    def test_overall_ceiling_on_wrong_codes(self):
+        with mock.patch.object(webapp, "MAX_LOGIN_FAILURES_TOTAL", 5):
+            for i in range(5):
+                self.login("NOPE-NOPE", extra={"X-Forwarded-For": "198.51.100.%d" % i})
+            self.assertEqual(self.login(extra={"X-Forwarded-For": "198.51.100.99"})[0], 429)
+
+    def test_visitor_cannot_reach_private_network(self):
+        _, _, visitor = self.login()
+        for url in ("http://192.168.1.1/x.mp4", "http://127.0.0.1:9000/a.wav",
+                    "http://[::1]/a", "https://router.example.com/v",
+                    "https://sneaky.example.com/v", "http://169.254.169.254/latest",
+                    "https://no-such-host.example/v"):
+            status, _, body = self.call("/api/jobs", {"url": url}, visitor)
+            self.assertEqual(status, 400, url)
+        self.assertEqual(self.call("/api/jobs", {"url": "https://example.com/v"}, visitor)[0], 202)
+        # The owner, on the computer itself, may use local links.
+        self.assertEqual(self.call("/api/jobs", {"url": "http://192.168.1.1/x.mp4"})[0], 202)
+
+    def test_visitor_questions_are_off_until_the_owner_allows_them(self):
+        _, _, visitor = self.login()
+        status, _, body = self.call("/api/ai/ask", {"job_id": "0" * 12}, visitor)
+        self.assertEqual(status, 403)
+        settings = json.loads(self.call("/api/ai/settings")[2])
+        self.assertFalse(settings["visitors_can_ask"])
+        reply = self.call("/api/ai/settings", {"provider": "ollama", "visitors_can_ask": True})
+        self.assertEqual(reply[0], 200)
+        self.assertTrue(json.loads(reply[2])["visitors_can_ask"])
+        # Now the request gets past the gate (and fails only on the unknown job).
+        self.assertEqual(self.call("/api/ai/ask", {"job_id": "0" * 12}, visitor)[0], 404)
+        # Visitors still cannot change it.
+        self.assertEqual(self.call("/api/ai/settings",
+                                   {"provider": "ollama", "visitors_can_ask": False},
+                                   visitor)[0], 403)
 
 
 class ShareCodeTests(unittest.TestCase):

@@ -17,11 +17,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import queue
 import re
 import secrets
+import socket
 import socketserver
 import subprocess
 import sys
@@ -48,8 +50,13 @@ ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 SHARE_PATH = ai_chat.SETTINGS_PATH.parent / "share.json"
 SESSION_COOKIE = "lt_session"
 SESSION_DAYS = 30
-MAX_LOGIN_FAILURES = 10        # wrong codes allowed ...
-LOGIN_FAILURE_WINDOW = 15 * 60  # ... within this many seconds, from anyone
+MAX_LOGIN_FAILURES = 10          # wrong codes allowed from one visitor ...
+LOGIN_FAILURE_WINDOW = 15 * 60    # ... within this many seconds.
+# A ceiling across all visitors. Visitor addresses come from tunnel headers,
+# which an attacker can vary, so this caps guessing overall. 200 tries per
+# 15 minutes against ~850 billion possible codes is hopeless for a guesser,
+# and one prankster cannot lock the family out with a handful of tries.
+MAX_LOGIN_FAILURES_TOTAL = 200
 # Headers that tunnels and proxies add; a request carrying one came from outside.
 FORWARD_HEADERS = {"forwarded", "x-real-ip"}
 FORWARD_PREFIXES = ("x-forwarded-", "cf-", "tailscale-")
@@ -66,6 +73,33 @@ def open_folder(path: Path) -> None:
         os.startfile(str(path))  # type: ignore[attr-defined]
     else:
         subprocess.Popen(["xdg-open", str(path)])
+
+
+def _is_public_address(address: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(address.split("%", 1)[0])
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_global and not ip.is_multicast
+
+
+def check_public_url(url: str, resolve: Callable = socket.getaddrinfo) -> None:
+    """
+    Refuse links that point into the owner's own network (router pages, other
+    devices, this computer). Used for visitors only: the owner may want local
+    links. Raises lt.TranscribeError with a message safe to show.
+    """
+    host = (urllib.parse.urlparse(url).hostname or "").strip("[]")
+    try:
+        addresses = {info[4][0] for info in resolve(host, None)}
+    except (OSError, UnicodeError):
+        raise lt.TranscribeError("Couldn't find that website. Check the link.")
+    if not addresses or not all(_is_public_address(a) for a in addresses):
+        raise lt.TranscribeError(
+            "That link points to a private network address, which isn't allowed "
+            "for shared visitors.")
 
 
 def _plain_code(code: str) -> str:
@@ -247,7 +281,8 @@ class Handler(BaseHTTPRequestHandler):
     settings_path: Optional[Path] = None  # None means ai_chat.SETTINGS_PATH
     settings_lock = threading.Lock()
     share: Optional[dict] = None  # {"code", "secret"} while family sharing is on
-    login_failures: list = []
+    resolver: Callable = staticmethod(socket.getaddrinfo)  # tests swap this out
+    login_failures: dict = {}  # visitor address -> times of wrong codes
     login_lock = threading.Lock()
 
     # -- helpers ----------------------------------------------------------
@@ -295,6 +330,17 @@ class Handler(BaseHTTPRequestHandler):
             name.lower() in FORWARD_HEADERS or name.lower().startswith(FORWARD_PREFIXES)
             for name in self.headers.keys())
 
+    def _client_address(self) -> str:
+        """Best guess at who is asking: the visitor's address as the tunnel saw it."""
+        for header in ("CF-Connecting-IP", "X-Real-IP"):
+            value = self.headers.get(header, "").strip()
+            if value:
+                return value[:64]
+        forwarded = self.headers.get("X-Forwarded-For", "")
+        if forwarded.strip():
+            return forwarded.split(",")[0].strip()[:64]
+        return self.client_address[0]
+
     def _session_token(self) -> str:
         return hmac.new(self.share["secret"].encode(), b"session", hashlib.sha256).hexdigest()
 
@@ -331,17 +377,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {"error": "Not found."})
             return
         now = time.time()
+        who = self._client_address()
         with self.login_lock:
-            self.login_failures[:] = [t for t in self.login_failures
-                                      if now - t < LOGIN_FAILURE_WINDOW]
-            locked = len(self.login_failures) >= MAX_LOGIN_FAILURES
+            failures = self.login_failures
+            for address in list(failures):
+                failures[address] = [t for t in failures[address]
+                                     if now - t < LOGIN_FAILURE_WINDOW]
+                if not failures[address]:
+                    del failures[address]
+            locked = (len(failures.get(who, ())) >= MAX_LOGIN_FAILURES or
+                      sum(map(len, failures.values())) >= MAX_LOGIN_FAILURES_TOTAL)
         if locked:
             self._json(429, {"error": "Too many wrong codes. Wait 15 minutes and try again."})
             return
         given = _plain_code(str(data.get("code", "")))
         if not hmac.compare_digest(given.encode(), _plain_code(self.share["code"]).encode()):
             with self.login_lock:
-                self.login_failures.append(now)
+                self.login_failures.setdefault(who, []).append(now)
             self._json(403, {"error": "That code isn't right. Check it and try again."})
             return
         cookie = (f"{SESSION_COOKIE}={self._session_token()}; Path=/; HttpOnly; "
@@ -462,6 +514,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/ai/ask":
+            if self._is_remote() and not ai_chat.load_settings(
+                    self.settings_path).get("visitors_can_ask"):
+                self._json(403, {"error": "The owner hasn't turned on questions for "
+                                          "people they share with."})
+                return
             job_id = str(data.get("job_id", ""))
             job = self.manager.get(job_id) if re.fullmatch(r"[0-9a-f]{12}", job_id) else None
             if not job:
@@ -480,6 +537,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/jobs":
             try:
                 url = lt.validate_url(str(data.get("url", "")))
+                if self._is_remote():
+                    check_public_url(url, self.resolver)
                 model = lt.resolve_model(str(data.get("model") or lt.DEFAULT_MODEL))
             except lt.TranscribeError as exc:
                 self._json(400, {"error": str(exc)})
@@ -531,6 +590,7 @@ def create_server(
     folder_opener: Callable[[Path], None] = open_folder,
     settings_path: Optional[Path] = None,
     share: Optional[dict] = None,
+    resolver: Optional[Callable] = None,
 ) -> LocalServer:
     """Build the server, trying the next ports if the first is taken."""
     manager = JobManager(
@@ -541,7 +601,8 @@ def create_server(
         "settings_path": Path(settings_path) if settings_path else None,
         "settings_lock": threading.Lock(),
         "share": share,
-        "login_failures": [],
+        "login_failures": {},
+        "resolver": staticmethod(resolver or socket.getaddrinfo),
         "login_lock": threading.Lock(),
     })
     last_error: Optional[OSError] = None
