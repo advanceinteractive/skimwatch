@@ -2,6 +2,8 @@
 
 ![tests](https://github.com/tonyb82/local-transcribe/actions/workflows/tests.yml/badge.svg)
 
+An [Advance Interactive](https://advanceinteractive.com) project.
+
 Paste a link to a YouTube video (or a video from most other sites) and get a
 clean, readable transcript — in your browser, on your own computer.
 
@@ -232,7 +234,7 @@ as described in [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © 2026 Anthony Boutsikoudis
+[MIT](LICENSE) © 2026 Advance Interactive (SQLPRO LLC)
 
 The source code in this repository is MIT licensed.
 

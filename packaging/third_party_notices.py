@@ -137,8 +137,9 @@ def main(out: str, app: Optional[Path] = None) -> None:
             dists[name.lower()] = dist
     native, problems = native_section(app)
     parts = [
-        "Local Transcribe includes the following third-party software.\n"
-        "Local Transcribe itself is MIT licensed; see LICENSE.txt.\n",
+        "Local Transcribe, by Advance Interactive, includes the following\n"
+        "third-party software. Local Transcribe itself is MIT licensed; see\n"
+        "LICENSE.txt.\n",
         native,
         WEIGHTS,
     ]

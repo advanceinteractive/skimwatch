@@ -5,7 +5,7 @@ All notable changes to this project are listed here. Versions follow
 
 ## 1.4.0 — 2026-10-22
 
-First public release.
+First public release, published by Advance Interactive.
 
 - **AI settings button** at the top of the page, so the assistant can be set up
   before the first transcript.
