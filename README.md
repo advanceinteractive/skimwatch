@@ -16,6 +16,8 @@ clean, readable transcript — in your browser, on your own computer.
   a copy button, and `.txt` / `.srt` (subtitle) downloads.
 - **Works on macOS, Windows and Linux.** ffmpeg is not required.
 
+![A finished transcript in Local Transcribe](docs/screenshot-transcript.png)
+
 ## Quick start
 
 ### Mac app (no Python needed)
@@ -78,9 +80,12 @@ switches language, pick the language yourself for a better result.
 
 ## Ask questions about a transcript (optional)
 
-Once a transcript is ready, an **Ask about this transcript** panel appears
-under it. Connect an AI assistant once, then ask for a summary, the key
-points, or anything else about the video.
+Click **AI settings** at the top of the page (or **Set up AI assistant** under a
+finished transcript), choose an assistant, paste your API key and press
+**Save**. Then ask for a summary, the key points, or anything else about the
+video in the **Ask about this transcript** panel.
+
+<img src="docs/screenshot-ai-settings.png" alt="AI settings panel" width="560">
 
 | Assistant           | What you need                                                        | Where the text goes        |
 |---------------------|----------------------------------------------------------------------|----------------------------|
@@ -202,11 +207,23 @@ a GitHub release to share it.
 
 ## Responsible use
 
-Only transcribe videos you have the right to use, and respect the terms of
-service of the sites you download from. Transcripts are machine-generated and
-will contain mistakes; check anything important against the original.
+Local Transcribe is a tool; you are responsible for how you use it.
 
-This project is not affiliated with or endorsed by YouTube or Google.
+- **Site terms.** Many sites, YouTube included, do not allow downloading
+  except through their own download features or with permission, and do not
+  allow automated access. Using this program on such a site may break its
+  terms of service, and the site may block or rate-limit you.
+- **Copyright.** A transcript is a copy of someone's words. Transcribing your
+  own videos, public-domain or Creative Commons material, or videos you have
+  permission to use is the safe case. Keeping a private transcript to study,
+  quote briefly or make a video accessible may be allowed where you live (for
+  example as fair use in the US), but publishing or selling transcripts of
+  other people's videos generally needs their permission.
+- **Accuracy.** Transcripts are machine-generated and will contain mistakes;
+  check anything important against the original.
+
+This is general information, not legal advice. This project is not affiliated
+with or endorsed by YouTube or Google; "YouTube" is a trademark of Google LLC.
 
 ## Contributing and security
 
@@ -217,5 +234,8 @@ as described in [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE) © 2026 Anthony Boutsikoudis
 
-The packaged Mac app bundles third-party software, including FFmpeg (LGPL);
-their licenses are listed in `THIRD_PARTY_NOTICES.txt` inside the app.
+The source code in this repository is MIT licensed. The packaged Mac app also
+contains third-party libraries under their own licenses, listed in
+`THIRD_PARTY_NOTICES.txt` inside the app (`Contents/Resources`). Some of those,
+pulled in by the audio library's FFmpeg build, are GPL licensed; see that file
+for details and source links.

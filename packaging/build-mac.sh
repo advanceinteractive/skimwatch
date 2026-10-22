@@ -60,7 +60,7 @@ APP="$WORK/dist/$NAME.app"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 11.0" "$APP/Contents/Info.plist" 2>/dev/null || true
 echo "==> Writing third-party notices"
-"$WORK/venv/bin/python" packaging/third_party_notices.py "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt"
+"$WORK/venv/bin/python" packaging/third_party_notices.py "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt" "$APP"
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
 
 # Editing Info.plist invalidates PyInstaller's signature; sign again (ad hoc).

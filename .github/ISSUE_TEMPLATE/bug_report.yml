@@ -1,0 +1,42 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If a video won't download, first update the
+        downloader (see **Troubleshooting** in the README) and try again.
+        **Do not paste API keys or access codes.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Local Transcribe version
+      description: Shown at the bottom of the page.
+      placeholder: "1.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run it?
+      options: [Mac app, From source on macOS, From source on Windows, From source on Linux]
+    validations:
+      required: true
+  - type: input
+    id: quality
+    attributes:
+      label: Quality level and site
+      placeholder: "base, YouTube"
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message or console output
+      render: text
