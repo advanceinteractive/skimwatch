@@ -40,12 +40,12 @@ def draw(path: Path) -> None:
     cy, h = 513, 220
     w = int(h * 0.8)
     for x in (590, 590 + w - 56):
-        path = NSBezierPath.bezierPath()
-        path.moveToPoint_((x, cy - h // 2))
-        path.lineToPoint_((x, cy + h // 2))
-        path.lineToPoint_((x + w, cy))
-        path.closePath()
-        path.fill()
+        triangle = NSBezierPath.bezierPath()
+        triangle.moveToPoint_((x, cy - h // 2))
+        triangle.lineToPoint_((x, cy + h // 2))
+        triangle.lineToPoint_((x + w, cy))
+        triangle.closePath()
+        triangle.fill()
 
     context.flushGraphics()
     data = rep.representationUsingType_properties_(NSBitmapImageFileTypePNG, {})
@@ -58,6 +58,8 @@ def main() -> None:
     iconset.mkdir(parents=True, exist_ok=True)
     master = iconset / "icon_512x512@2x.png"
     draw(master)
+    if not master.is_file():
+        sys.exit(f"The icon was not written to {master}")
     for points in (16, 32, 128, 256, 512):
         for scale in (1, 2):
             name = f"icon_{points}x{points}{'@2x' if scale == 2 else ''}.png"
