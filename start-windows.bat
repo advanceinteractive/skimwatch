@@ -1,5 +1,5 @@
 @echo off
-rem Local Transcribe launcher for Windows. Double-click this file.
+rem SkimWatch launcher for Windows. Double-click this file.
 rem The first run creates a private Python environment in .venv and installs
 rem the requirements; later runs start straight away.
 setlocal

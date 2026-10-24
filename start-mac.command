@@ -1,5 +1,5 @@
 #!/bin/bash
-# Local Transcribe launcher for macOS and Linux.
+# SkimWatch launcher for macOS and Linux.
 # Double-click this file (macOS) or run ./start-mac.command in a terminal.
 # The first run creates a private Python environment in .venv and installs
 # the requirements; later runs start straight away.

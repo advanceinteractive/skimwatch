@@ -1,11 +1,14 @@
-# Local Transcribe
+# SkimWatch
 
-![tests](https://github.com/tonyb82/local-transcribe/actions/workflows/tests.yml/badge.svg)
+**Skip the video. Read it in a minute. Ask it anything.**
 
-An [Advance Interactive](https://advanceinteractive.com) project.
+![tests](https://github.com/tonyb82/skimwatch/actions/workflows/tests.yml/badge.svg)
+
+[skimwatch.com](https://skimwatch.com) · an [Advance Interactive](https://advanceinteractive.com) project
 
 Paste a link to a YouTube video (or a video from most other sites) and get a
-clean, readable transcript — in your browser, on your own computer.
+clean, readable transcript — in your browser, on your own computer. Then ask it
+questions instead of watching the whole thing.
 
 - **Private.** The audio is downloaded and transcribed locally with
   [Whisper](https://github.com/openai/whisper). Nothing is uploaded, and no
@@ -18,16 +21,16 @@ clean, readable transcript — in your browser, on your own computer.
   a copy button, and `.txt` / `.srt` (subtitle) downloads.
 - **Works on macOS, Windows and Linux.** ffmpeg is not required.
 
-![A finished transcript in Local Transcribe](docs/screenshot-transcript.png)
+![A finished transcript in SkimWatch](docs/screenshot-transcript.png)
 
 ## Quick start
 
 ### Mac app (no Python needed)
 
-1. Download `Local-Transcribe-<version>-mac-arm64.zip` from the
+1. Download `SkimWatch-<version>-mac-arm64.zip` from the
    [Releases](../../releases) page and unzip it. (Apple Silicon Macs, M1 or
    newer, on macOS 11 or later.)
-2. Drag **Local Transcribe** to your Applications folder and open it.
+2. Drag **SkimWatch** to your Applications folder and open it.
 3. The app is not signed with a paid Apple certificate, so macOS blocks it the
    first time. Open **System Settings → Privacy & Security**, scroll down, and
    click **Open Anyway**. (On macOS 14 and earlier: right-click the app and
@@ -36,7 +39,7 @@ clean, readable transcript — in your browser, on your own computer.
    **Transcribe**.
 
 Click the Dock icon to bring the page back; quit from the Dock or with
-`Cmd+Q`. Transcripts are saved to `Documents/Local Transcribe`.
+`Cmd+Q`. Transcripts are saved to `Documents/SkimWatch`.
 
 ### Run from source (macOS, Windows, Linux)
 
@@ -100,7 +103,7 @@ you set it up and ask a question: the transcript and your questions go to the
 assistant you chose, and usage is billed to your own API key. Choose Ollama to
 keep everything local and free. Transcribing never uses any of these.
 
-Your key is stored only on this computer, in `~/.local-transcribe/settings.json`
+Your key is stored only on this computer, in `~/.skimwatch/settings.json`
 (readable only by you), and is never shown again in the page. Under
 **Advanced** you can point the ChatGPT option at any OpenAI-compatible service.
 
@@ -143,7 +146,7 @@ Good to know:
 ## Where transcripts go
 
 Every finished transcript is also saved as `<title>_<video id>.txt` and `.srt`:
-in `Documents/Local Transcribe` for the Mac app, or in the `transcripts` folder
+in `Documents/SkimWatch` for the Mac app, or in the `transcripts` folder
 next to the program when run from source. **Show in folder** on the page opens
 it.
 
@@ -203,13 +206,13 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 ```
 
 This uses [PyInstaller](https://pyinstaller.org/) in a throw-away environment
-and writes `dist/Local-Transcribe-<version>-mac-<arch>.zip`. The app runs only
+and writes `dist/SkimWatch-<version>-mac-<arch>.zip`. The app runs only
 on the kind of Mac it was built on (Apple Silicon or Intel). Upload the zip to
 a GitHub release to share it.
 
 ## Responsible use
 
-Local Transcribe is a tool; you are responsible for how you use it.
+SkimWatch is a tool; you are responsible for how you use it.
 
 - **Site terms.** Many sites, YouTube included, do not allow downloading
   except through their own download features or with permission, and do not
@@ -243,5 +246,5 @@ their licenses and source links in `THIRD_PARTY_NOTICES.txt` inside the app
 (`Contents/Resources`). Two of them, the x264 and x265 encoders that come with
 the audio library's FFmpeg build, are GPL licensed. The Mac app is therefore
 distributed under the terms of the GNU GPL version 2 or later as a combined
-work, while the source code of Local Transcribe itself stays MIT. This changes
+work, while the source code of SkimWatch itself stays MIT. This changes
 nothing for people who use the app or run it from source.

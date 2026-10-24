@@ -81,7 +81,7 @@ class ShareTests(unittest.TestCase):
         status, _, body = self.call("/", headers=TUNNEL)
         self.assertEqual(status, 200)
         self.assertIn(b"Access code", body)
-        self.assertNotIn(b"Welcome to Local Transcribe", body)
+        self.assertNotIn(b"Skip the video", body)
         status, _, body = self.call("/api/config", headers=TUNNEL)
         self.assertEqual((status, json.loads(body)["login"]), (401, True))
         self.assertEqual(self.call("/api/jobs", {"url": "https://a.test/v"}, TUNNEL)[0], 401)
@@ -108,7 +108,7 @@ class ShareTests(unittest.TestCase):
     def test_visitor_with_code_can_transcribe_but_not_manage(self):
         _, _, visitor = self.login()
         status, _, body = self.call("/", headers=visitor)
-        self.assertIn(b"Welcome to Local Transcribe", body)
+        self.assertIn(b"Skip the video", body)
         config = json.loads(self.call("/api/config", headers=visitor)[2])
         self.assertTrue(config["remote"])
         self.assertEqual(config["out_dir"], "")

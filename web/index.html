@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Transcribe">
+<meta name="apple-mobile-web-app-title" content="SkimWatch">
 <link rel="apple-touch-icon" href="/icon.png">
 <link rel="icon" href="/icon.png">
-<title>Local Transcribe</title>
+<title>SkimWatch</title>
 <style>
   :root {
     --bg: #f6f7f9; --card: #ffffff; --text: #1c2330; --muted: #5f6b7a;
@@ -117,15 +117,16 @@
 <body>
 <main>
   <div class="page-head">
-    <h1>Welcome to Local Transcribe</h1>
+    <h1>SkimWatch</h1>
     <button id="ai-header-settings" class="small" type="button" hidden
             aria-controls="ai-settings">AI settings</button>
   </div>
   <p class="lead" id="lead">
-    Paste a link to a YouTube video (or a video from most other sites) and get
-    a clean, readable transcript. The audio is downloaded and transcribed on
-    this computer with Whisper &mdash; nothing is uploaded, and no account or
-    API key is needed.
+    <strong>Skip the video. Read it in a minute. Ask it anything.</strong>
+    Paste a link to a YouTube video (or a video from most other sites) and get a
+    clean, readable transcript. The audio is downloaded and transcribed on this
+    computer with Whisper &mdash; nothing is uploaded, and no account or API key
+    is needed.
   </p>
 
   <form id="form" class="card" autocomplete="off">
@@ -901,7 +902,7 @@
       $("language").appendChild(option);
     });
     updateHint();
-    $("footer").textContent = "Local Transcribe " + config.version +
+    $("footer").textContent = "SkimWatch " + config.version +
       (config.remote ? " · shared privately with you"
         : " · runs entirely on this computer · transcripts are saved to " + config.out_dir);
     remote = !!config.remote;

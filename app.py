@@ -2,7 +2,7 @@
 """
 app.py
 
-Entry point for the packaged, double-click version of Local Transcribe (the
+Entry point for the packaged, double-click version of SkimWatch (the
 one built with PyInstaller, which needs no Python on the user's computer).
 
 It starts the same local web server as webapp.py, opens the browser, and
@@ -28,7 +28,7 @@ import webapp
 
 
 def transcripts_dir() -> Path:
-    """Documents/Local Transcribe, or the home folder if Documents is off-limits."""
+    """Documents/SkimWatch, or the home folder if Documents is off-limits."""
     home = Path.home()
     for base in (home / "Documents", home):
         folder = base / webapp.APP_NAME
@@ -49,7 +49,7 @@ def log_path() -> Path:
     else:
         folder = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / webapp.APP_NAME
     folder.mkdir(parents=True, exist_ok=True)
-    return folder / "Local Transcribe.log"
+    return folder / "SkimWatch.log"
 
 
 def already_running(port: int) -> bool:

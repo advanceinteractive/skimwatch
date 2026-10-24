@@ -2,7 +2,7 @@
 """
 webapp.py
 
-Local web interface for local_transcribe.py. Starts a small web server on
+Local web interface for SkimWatch (local_transcribe.py is the engine). Starts a small web server on
 this computer only (127.0.0.1) and opens it in your browser.
 
 Usage:
@@ -40,7 +40,7 @@ import ai_chat
 import local_transcribe as lt
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
-APP_NAME = "Local Transcribe"
+APP_NAME = "SkimWatch"
 DEFAULT_PORT = 8765
 MAX_BODY_BYTES = 16 * 1024
 # Questions carry the whole chat so far, so they need more room.
@@ -276,7 +276,7 @@ class JobManager:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "LocalTranscribe/" + lt.__version__
+    server_version = "SkimWatch/" + lt.__version__
     manager: JobManager  # set by create_server
     settings_path: Optional[Path] = None  # None means ai_chat.SETTINGS_PATH
     settings_lock = threading.Lock()
@@ -369,7 +369,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._is_remote():
             return True
         self._json(403, {"error": "Only the owner can do that, on the computer "
-                                  "that runs Local Transcribe."})
+                                  "that runs SkimWatch."})
         return False
 
     def _login(self, data: dict) -> None:
@@ -619,7 +619,7 @@ def create_server(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Local web UI for Local Transcribe.")
+    parser = argparse.ArgumentParser(description="Local web UI for SkimWatch.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", DEFAULT_PORT)))
     parser.add_argument("--no-browser", action="store_true",
                         help="Don't open the browser automatically.")
@@ -646,7 +646,7 @@ def main() -> None:
     port = server.server_address[1]
     url = f"http://127.0.0.1:{port}/"
 
-    print(f"Local Transcribe {lt.__version__} is running.")
+    print(f"SkimWatch {lt.__version__} is running.")
     print(f"  Open in your browser : {url}")
     print(f"  Transcripts saved to : {out_dir}")
     if share:

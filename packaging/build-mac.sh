@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build "Local Transcribe.app" for macOS: a double-click app that needs no
+# Build "SkimWatch.app" for macOS: a double-click app that needs no
 # Python on the user's computer.
 #
 #   ./packaging/build-mac.sh
 #
-# Result: dist/Local-Transcribe-<version>-mac-<arch>.zip
+# Result: dist/SkimWatch-<version>-mac-<arch>.zip
 # The app only runs on the kind of Mac it was built on (Apple Silicon or
 # Intel). It is not signed with an Apple developer certificate, so people who
 # download it must approve it once in System Settings > Privacy & Security.
@@ -12,10 +12,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
-NAME="Local Transcribe"
+NAME="SkimWatch"
 VERSION="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' local_transcribe.py)"
 ARCH="$(uname -m)"
-WORK="${BUILD_DIR:-${TMPDIR:-/tmp}/local-transcribe-build}"
+WORK="${BUILD_DIR:-${TMPDIR:-/tmp}/skimwatch-build}"
 
 PY="${PYTHON:-}"
 if [ -z "$PY" ]; then
@@ -47,7 +47,7 @@ echo "==> Running PyInstaller"
     --windowed \
     --name "$NAME" \
     --icon "$WORK/icon.icns" \
-    --osx-bundle-identifier "com.advanceinteractive.localtranscribe" \
+    --osx-bundle-identifier "com.advanceinteractive.skimwatch" \
     --add-data "$ROOT/web:web" \
     --collect-data faster_whisper \
     --exclude-module torch \
@@ -69,7 +69,7 @@ cp packaging/GPL-2.0.txt "$APP/Contents/Resources/GPL-2.0.txt"
 codesign --force --deep --sign - "$APP"
 
 mkdir -p "$ROOT/dist"
-ZIP="$ROOT/dist/Local-Transcribe-$VERSION-mac-$ARCH.zip"
+ZIP="$ROOT/dist/SkimWatch-$VERSION-mac-$ARCH.zip"
 rm -f "$ZIP"
 ditto -c -k --keepParent "$APP" "$ZIP"
 

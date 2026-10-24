@@ -3,9 +3,13 @@
 All notable changes to this project are listed here. Versions follow
 [semantic versioning](https://semver.org/).
 
-## 1.4.0 — 2026-10-22
+## 1.4.0 — 2026-10-24
 
 First public release, published by Advance Interactive.
+
+- **Renamed to SkimWatch** (was Local Transcribe). Settings move from
+  `~/.local-transcribe` to `~/.skimwatch` automatically on first start; the
+  Mac app now saves to `Documents/SkimWatch`.
 
 - **AI settings button** at the top of the page, so the assistant can be set up
   before the first transcript.
@@ -18,7 +22,7 @@ First public release, published by Advance Interactive.
 - Mac app: ships `LICENSE.txt` and an itemised `THIRD_PARTY_NOTICES.txt` with
   source links. The app download is distributed under GPL-2.0-or-later terms
   as a combined work because it bundles x264 and x265; the source code of
-  Local Transcribe stays MIT.
+  SkimWatch stays MIT.
 - Project: tests run on macOS, Windows and Linux in GitHub Actions;
   `SECURITY.md`, `CONTRIBUTING.md`, screenshots.
 

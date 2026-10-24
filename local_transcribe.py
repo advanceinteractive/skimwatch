@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-local_transcribe.py
+local_transcribe.py — the SkimWatch engine
 
 Download the audio from a YouTube (or other yt-dlp supported) video and
 transcribe it locally with Whisper. Nothing is sent to a cloud service.

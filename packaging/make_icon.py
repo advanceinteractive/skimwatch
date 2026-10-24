@@ -1,4 +1,4 @@
-"""Draw the app icon (a red tile with white text lines) as a macOS .iconset.
+"""Draw the SkimWatch icon (red tile, text lines, fast-forward mark) as a macOS .iconset.
 
 Usage: python make_icon.py <output.iconset>   (macOS only, needs pyobjc)
 """
@@ -31,9 +31,21 @@ def draw(path: Path) -> None:
         NSMakeRect(100, 100, 824, 824), 185, 185).fill()
 
     NSColor.whiteColor().setFill()
-    for y, width in ((652, 520), (536, 520), (420, 520), (304, 320)):
+    # Three text lines on the left ("the words")...
+    # (AppKit's origin is bottom-left, so y is measured from the bottom.)
+    for y, width in ((640, 320), (480, 320), (320, 200)):
         NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(
-            NSMakeRect(252, y, width, 68), 34, 34).fill()
+            NSMakeRect(200, y, width, 66), 33, 33).fill()
+    # ...and a fast-forward mark on the right ("skip ahead").
+    cy, h = 513, 220
+    w = int(h * 0.8)
+    for x in (590, 590 + w - 56):
+        path = NSBezierPath.bezierPath()
+        path.moveToPoint_((x, cy - h // 2))
+        path.lineToPoint_((x, cy + h // 2))
+        path.lineToPoint_((x + w, cy))
+        path.closePath()
+        path.fill()
 
     context.flushGraphics()
     data = rep.representationUsingType_properties_(NSBitmapImageFileTypePNG, {})

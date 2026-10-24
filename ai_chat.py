@@ -28,7 +28,20 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-SETTINGS_PATH = Path.home() / ".local-transcribe" / "settings.json"
+SETTINGS_PATH = Path.home() / ".skimwatch" / "settings.json"
+# Where settings lived before the app was renamed from Local Transcribe (1.3).
+LEGACY_SETTINGS_DIR = Path.home() / ".local-transcribe"
+
+
+def migrate_legacy_settings() -> None:
+    """Move ~/.local-transcribe to ~/.skimwatch once, so nobody loses a key."""
+    new_dir = SETTINGS_PATH.parent
+    if new_dir.exists() or not LEGACY_SETTINGS_DIR.is_dir():
+        return
+    try:
+        LEGACY_SETTINGS_DIR.rename(new_dir)
+    except OSError:
+        pass
 
 ASK_TIMEOUT = 120  # seconds; long transcripts and local models can be slow
 MODELS_TIMEOUT = 15
@@ -140,6 +153,8 @@ def _normalise(raw: object) -> dict:
 
 def load_settings(path: Optional[Path] = None) -> dict:
     """Read saved settings; a missing or corrupt file just means defaults."""
+    if path is None:
+        migrate_legacy_settings()
     try:
         raw = json.loads(Path(path or SETTINGS_PATH).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -362,7 +377,7 @@ def _request(
     request = urllib.request.Request(url, data=data, method=method)
     request.add_header("Accept", "application/json")
     # Some services turn away Python's default "Python-urllib" user agent.
-    request.add_header("User-Agent", "LocalTranscribe")
+    request.add_header("User-Agent", "SkimWatch")
     if data is not None:
         request.add_header("Content-Type", "application/json")
     for key, value in (headers or {}).items():

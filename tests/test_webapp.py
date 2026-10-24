@@ -118,12 +118,12 @@ class WebAppTests(unittest.TestCase):
         status, headers, body = self.request("/")
         self.assertEqual(status, 200)
         self.assertIn("text/html", headers["Content-Type"])
-        self.assertIn(b"Welcome to Local Transcribe", body)
+        self.assertIn(b"Skip the video", body)
 
     def test_config(self):
         status, config = self.json("/api/config")
         self.assertEqual(status, 200)
-        self.assertEqual(config["app"], "Local Transcribe")
+        self.assertEqual(config["app"], "SkimWatch")
         self.assertEqual(config["default_model"], lt.DEFAULT_MODEL)
         self.assertEqual([m["name"] for m in config["models"]], lt.MODEL_NAMES)
         self.assertEqual(config["languages"][0]["code"], "auto")

@@ -7,7 +7,7 @@ Please report security issues privately through GitHub's
 You should get a reply within a week. Include the version (`python
 local_transcribe.py --version`), your operating system, and steps to reproduce.
 
-## How Local Transcribe is meant to be used
+## How SkimWatch is meant to be used
 
 - **Normal use** — the web server answers only on `127.0.0.1` and rejects
   requests whose `Host` header is not `localhost`, so other devices on your
@@ -31,6 +31,6 @@ local_transcribe.py --version`), your operating system, and steps to reproduce.
   follows redirects itself. Only share with people you trust.
 - All visitors share one session secret. Changing the code
   (`--new-share-code`) signs everyone out.
-- API keys are stored in `~/.local-transcribe/settings.json`, readable only by
+- API keys are stored in `~/.skimwatch/settings.json`, readable only by
   your user account, not in the operating system's keychain.
 - The packaged Mac app is ad-hoc signed, not notarized by Apple.

@@ -117,9 +117,9 @@ def native_section(app: Optional[Path]) -> tuple:
                   "GPL notice: " + ", ".join(sorted(gpl)) + " are licensed under the GNU GPL",
                   "version 2 or later. Because they are part of this app, the app as a whole",
                   "is distributed to you under the terms of the GNU GPL version 2 or later",
-                  "as a combined work. The source code of Local Transcribe itself remains",
+                  "as a combined work. The source code of SkimWatch itself remains",
                   "available under the MIT License at",
-                  "https://github.com/tonyb82/local-transcribe , and the source code of",
+                  "https://github.com/tonyb82/skimwatch , and the source code of",
                   "every bundled component is available at the links in this file.",
                   "The full text of the GPL is in GPL-2.0.txt next to this file."]
     if unknown:
@@ -137,8 +137,8 @@ def main(out: str, app: Optional[Path] = None) -> None:
             dists[name.lower()] = dist
     native, problems = native_section(app)
     parts = [
-        "Local Transcribe, by Advance Interactive, includes the following\n"
-        "third-party software. Local Transcribe itself is MIT licensed; see\n"
+        "SkimWatch, by Advance Interactive, includes the following\n"
+        "third-party software. SkimWatch itself is MIT licensed; see\n"
         "LICENSE.txt.\n",
         native,
         WEIGHTS,
