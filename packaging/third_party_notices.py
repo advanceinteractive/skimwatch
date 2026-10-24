@@ -119,7 +119,7 @@ def native_section(app: Optional[Path]) -> tuple:
                   "is distributed to you under the terms of the GNU GPL version 2 or later",
                   "as a combined work. The source code of SkimWatch itself remains",
                   "available under the MIT License at",
-                  "https://github.com/tonyb82/skimwatch , and the source code of",
+                  "https://github.com/advanceinteractive/skimwatch , and the source code of",
                   "every bundled component is available at the links in this file.",
                   "The full text of the GPL is in GPL-2.0.txt next to this file."]
     if unknown:

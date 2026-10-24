@@ -2,7 +2,7 @@
 
 **Skip the video. Read it in a minute. Ask it anything.**
 
-![tests](https://github.com/tonyb82/skimwatch/actions/workflows/tests.yml/badge.svg)
+![tests](https://github.com/advanceinteractive/skimwatch/actions/workflows/tests.yml/badge.svg)
 
 [skimwatch.com](https://skimwatch.com) · an [Advance Interactive](https://advanceinteractive.com) project
 
