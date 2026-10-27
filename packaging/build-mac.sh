@@ -38,6 +38,23 @@ mkdir -p "$WORK"
 "$WORK/venv/bin/python" -m pip install --quiet --upgrade pip
 "$WORK/venv/bin/python" -m pip install --quiet -r requirements.txt pyinstaller pyobjc-framework-Cocoa
 
+# Deno: the JavaScript runtime yt-dlp needs for YouTube. Pinned and checksummed.
+DENO_VERSION="$(tr -d '[:space:]' < packaging/deno-version.txt)"
+case "$ARCH" in
+    arm64) DENO_ASSET="deno-aarch64-apple-darwin.zip" ;;
+    x86_64) DENO_ASSET="deno-x86_64-apple-darwin.zip" ;;
+    *) echo "No Deno build for $ARCH"; exit 1 ;;
+esac
+echo "==> Fetching Deno $DENO_VERSION"
+curl -fsSL -o "$WORK/deno.zip" "https://github.com/denoland/deno/releases/download/$DENO_VERSION/$DENO_ASSET"
+echo "$(grep " $DENO_ASSET\$" packaging/deno-sha256.txt | cut -d' ' -f1)  $WORK/deno.zip" | shasum -a 256 -c - >/dev/null ||
+    { echo "Deno download did not match packaging/deno-sha256.txt"; exit 1; }
+mkdir -p "$WORK/deno"
+unzip -oq "$WORK/deno.zip" -d "$WORK/deno"
+chmod +x "$WORK/deno/deno"
+curl -fsSL -o "$WORK/deno/LICENSE.md" "https://raw.githubusercontent.com/denoland/deno/$DENO_VERSION/LICENSE.md"
+"$WORK/deno/deno" --version | head -1
+
 echo "==> Drawing the icon"
 "$WORK/venv/bin/python" packaging/make_icon.py "$WORK/icon.iconset"
 iconutil -c icns -o "$WORK/icon.icns" "$WORK/icon.iconset"
@@ -50,6 +67,8 @@ echo "==> Running PyInstaller"
     --osx-bundle-identifier "com.advanceinteractive.skimwatch" \
     --add-data "$ROOT/web:web" \
     --collect-data faster_whisper \
+    --collect-all yt_dlp_ejs \
+    --add-binary "$WORK/deno/deno:bin" \
     --exclude-module torch \
     --exclude-module tkinter \
     --distpath "$WORK/dist" --workpath "$WORK/build" --specpath "$WORK" \
@@ -64,6 +83,7 @@ echo "==> Writing third-party notices"
 "$WORK/venv/bin/python" packaging/third_party_notices.py "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt" "$APP"
 cp LICENSE "$APP/Contents/Resources/LICENSE.txt"
 cp packaging/GPL-2.0.txt "$APP/Contents/Resources/GPL-2.0.txt"
+cp "$WORK/deno/LICENSE.md" "$APP/Contents/Resources/DENO-LICENSE.txt"
 
 # Editing Info.plist invalidates PyInstaller's signature; sign again (ad hoc).
 codesign --force --deep --sign - "$APP"

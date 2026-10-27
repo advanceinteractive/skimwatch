@@ -13,6 +13,11 @@ First public release, published by Advance Interactive.
   are no longer sent to them.
 - **Clearer refusals:** a live stream or an over-long video now gets its own
   message instead of "Nothing could be downloaded".
+- **YouTube works out of the box.** YouTube now requires the downloader to
+  run small JavaScript puzzles, which needs a JavaScript runtime. The Mac app
+  bundles [Deno](https://deno.com/) and yt-dlp's solver scripts; the start
+  scripts download a pinned, checksummed Deno into `.venv`. If Deno still
+  can't be found, the error says so and what to do.
 - **Mac app:** declares its real minimum, macOS 14 Sonoma (the bundled
   libraries are built for it); older systems get a clear "can't open" dialog
   instead of a crash.

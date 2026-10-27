@@ -40,6 +40,23 @@ if errorlevel 1 (
 copy /y requirements.txt ".venv\requirements.installed" >nul
 
 :run
+rem Deno is the JavaScript runtime the downloader needs for YouTube links.
+".venv\Scripts\python.exe" -c "import sys, local_transcribe; sys.exit(0 if local_transcribe.find_js_runtime() else 1)" >nul 2>&1
+if not errorlevel 1 goto start
+set /p DENO_VERSION=<packaging\deno-version.txt
+echo Downloading Deno ^(used for YouTube links^)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$asset='deno-x86_64-pc-windows-msvc.zip';" ^
+  "Invoke-WebRequest -Uri ('https://github.com/denoland/deno/releases/download/%DENO_VERSION%/' + $asset) -OutFile '.venv\deno.zip';" ^
+  "$want=(Select-String -Path 'packaging\deno-sha256.txt' -Pattern $asset).Line.Split(' ')[0];" ^
+  "$got=(Get-FileHash '.venv\deno.zip' -Algorithm SHA256).Hash.ToLower();" ^
+  "if ($got -ne $want) { throw 'checksum mismatch' };" ^
+  "Expand-Archive -Force '.venv\deno.zip' '.venv\Scripts';" ^
+  "Remove-Item '.venv\deno.zip'"
+if errorlevel 1 echo WARNING: Could not download Deno. YouTube links may fail until you install it from https://deno.com
+
+:start
 ".venv\Scripts\python.exe" webapp.py %*
 if errorlevel 1 goto failed
 exit /b 0

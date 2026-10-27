@@ -662,6 +662,12 @@ def main() -> None:
     print(f"SkimWatch {lt.__version__} is running.")
     print(f"  Open in your browser : {url}")
     print(f"  Transcripts saved to : {out_dir}")
+    runtime = lt.find_js_runtime()
+    if runtime:
+        print(f"  YouTube support      : ready (Deno at {runtime})")
+    else:
+        print("  YouTube support      : Deno not found; YouTube links may fail. "
+              "See README > Troubleshooting.")
     if share:
         print()
         print("  FAMILY SHARING IS ON")

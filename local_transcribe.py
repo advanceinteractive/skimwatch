@@ -186,6 +186,34 @@ def _clean_error(exc: BaseException) -> str:
 _PARTIAL_SUFFIXES = {".part", ".ytdl", ".temp", ".tmp"}
 
 
+def find_js_runtime() -> Optional[str]:
+    """
+    Where Deno is, or None. YouTube makes the downloader solve small
+    JavaScript puzzles, which needs a JavaScript runtime. The Mac app bundles
+    Deno; the start scripts download it into .venv; failing both, PATH.
+    """
+    exe = "deno.exe" if os.name == "nt" else "deno"
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(getattr(sys, "_MEIPASS", "")) / "bin" / exe)
+    here = Path(__file__).resolve().parent
+    candidates.append(here / ".venv" / ("Scripts" if os.name == "nt" else "bin") / exe)
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return shutil.which(exe)
+
+
+def _is_youtube(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host == "youtu.be" or host.endswith(("youtube.com", "youtube-nocookie.com"))
+
+
+JS_RUNTIME_HINT = (
+    "YouTube links need Deno, a small free program the downloader uses, and it "
+    "wasn't found. Install it from https://deno.com and start SkimWatch again.")
+
+
 class _SilentLogger:
     """Keeps yt-dlp from printing; failures are reported through exceptions."""
 
@@ -227,6 +255,7 @@ def download_audio(
             progress("downloading", (done / total) if total else None, "")
 
     refused: dict = {}
+    js_runtime = find_js_runtime()
 
     def media_filter(info: dict, *, incomplete: bool = False) -> Optional[str]:
         """Tell yt-dlp to skip the video, remembering why so the error can say."""
@@ -255,6 +284,8 @@ def download_audio(
         "match_filter": media_filter,
         "progress_hooks": [hook],
         "retries": 3,
+        # Point the downloader at our Deno rather than hoping it is on PATH.
+        "js_runtimes": {"deno": {"path": js_runtime} if js_runtime else {}},
     }
 
     info = None
@@ -272,7 +303,10 @@ def download_audio(
             # moments later; asking again gets a fresh one.
             if attempt == 1 and "HTTP Error 403" in str(exc):
                 continue
-            raise TranscribeError(f"Could not download that video: {_clean_error(exc)}")
+            message = f"Could not download that video: {_clean_error(exc)}"
+            if not js_runtime and _is_youtube(url):
+                message += "\n\n" + JS_RUNTIME_HINT
+            raise TranscribeError(message)
 
     if info and info.get("_type") == "playlist":
         entries = [e for e in (info.get("entries") or []) if e]

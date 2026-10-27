@@ -19,7 +19,8 @@ questions instead of watching the whole thing.
   paste a link and press **Transcribe**.
 - **Readable.** The text is grouped into paragraphs, with optional timestamps,
   a copy button, and `.txt` / `.srt` (subtitle) downloads.
-- **Works on macOS, Windows and Linux.** ffmpeg is not required.
+- **Works on macOS, Windows and Linux.** No separate ffmpeg, Node or other
+  tools to install.
 
 ![A finished transcript in SkimWatch](docs/screenshot-transcript.png)
 
@@ -32,7 +33,8 @@ questions instead of watching the whole thing.
    Mac (M1 or newer) running **macOS 14 Sonoma or later**. Not sure? Open the
    Apple menu → **About This Mac**; it shows both. Intel Macs and older
    macOS versions can run from source instead (next section).
-2. Drag **SkimWatch** to your Applications folder and open it.
+2. Drag **SkimWatch** to your Applications folder and open it. Everything
+   it needs is inside the app; nothing else to install.
 3. The app is not signed with a paid Apple certificate, so macOS blocks it the
    first time. Open **System Settings → Privacy & Security**, scroll down, and
    click **Open Anyway**. (On macOS 14 and earlier: right-click the app and
@@ -59,8 +61,10 @@ On Windows, tick **"Add python.exe to PATH"** in the installer.
    **Transcribe**.
 
 The first start takes a few minutes while it installs what it needs into a
-private `.venv` folder inside the project. To stop the program, close its
-terminal window or press `Ctrl+C` in it.
+private `.venv` folder inside the project, including a copy of
+[Deno](https://deno.com/), which the downloader uses for YouTube links.
+Nothing is installed anywhere else on your computer. To stop the program,
+close its terminal window or press `Ctrl+C` in it.
 
 ### Either way
 
@@ -177,9 +181,12 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
     downloader.
   - *From source:* `.venv/bin/python -m pip install -U yt-dlp` (Windows:
     `.venv\Scripts\python -m pip install -U yt-dlp`).
-- **YouTube still fails after updating** — the downloader increasingly relies
-  on a JavaScript runtime for YouTube. Installing [Deno](https://deno.com/)
-  (free, one command) is its recommended fix; no other setup is needed.
+- **"YouTube links need Deno"** — YouTube makes the downloader solve small
+  JavaScript puzzles, which needs [Deno](https://deno.com/). The Mac app
+  includes it, and the start scripts download it into `.venv`. If that
+  download was blocked, install Deno yourself (one command on its website)
+  and start SkimWatch again; the program's window says
+  `YouTube support: ready` once it is found.
 - **Private, members-only, age-restricted or login-only videos** are not
   supported. Some sites (Vimeo, for example) require a login for most videos.
 - **"That is a live stream"** — live streams can be transcribed once they
@@ -202,6 +209,8 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 - `web/login.html`, `share-mac.command` — the access-code page and launcher for
   family sharing.
 - `app.py` — entry point of the packaged app (Dock icon, single instance).
+- `packaging/` — the Mac app build, pinned Deno version and checksums, and
+  the generator for the third-party notices.
 - `tests/` — run with `python -m unittest discover -s tests`.
 
 ## Building the Mac app
@@ -211,9 +220,11 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
 ```
 
 This uses [PyInstaller](https://pyinstaller.org/) in a throw-away environment
-and writes `dist/SkimWatch-<version>-mac-<arch>.zip`. The app runs only
-on the kind of Mac it was built on (Apple Silicon or Intel). Upload the zip to
-a GitHub release to share it.
+and writes `dist/SkimWatch-<version>-mac-<arch>.zip`. It downloads the Deno
+release pinned in `packaging/deno-version.txt`, checks it against
+`packaging/deno-sha256.txt`, and bundles it with the app. To move to a newer
+Deno, update both files. The app runs only on the kind of Mac it was built on
+(Apple Silicon or Intel). Upload the zip to a GitHub release to share it.
 
 ## Responsible use
 

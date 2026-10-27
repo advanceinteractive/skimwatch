@@ -1,6 +1,7 @@
 """Unit tests for the formatting and validation helpers (no network needed)."""
 
 import sys
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -233,6 +234,48 @@ class DownloadTests(unittest.TestCase):
                 lt.download_audio("https://a.test/v", Path(tmp))
             self.assertIn("live stream", str(ctx.exception))
         self.assertEqual(len(calls), 3)
+
+    def test_points_the_downloader_at_deno(self):
+        fake, calls = self.fake_downloader(failures=0)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("yt_dlp.YoutubeDL", fake), \
+                mock.patch.object(lt, "find_js_runtime", return_value="/opt/deno"):
+            lt.download_audio("https://a.test/v", Path(tmp))
+        self.assertEqual(calls[0]["js_runtimes"], {"deno": {"path": "/opt/deno"}})
+        # Without a known location the downloader still looks on PATH itself.
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("yt_dlp.YoutubeDL", fake), \
+                mock.patch.object(lt, "find_js_runtime", return_value=None):
+            lt.download_audio("https://a.test/v", Path(tmp))
+        self.assertEqual(calls[1]["js_runtimes"], {"deno": {}})
+
+    def test_explains_missing_deno_for_youtube_only(self):
+        fake, _ = self.fake_downloader(failures=5, message="Requested format is not available")
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("yt_dlp.YoutubeDL", fake), \
+                mock.patch.object(lt, "find_js_runtime", return_value=None):
+            with self.assertRaises(lt.TranscribeError) as yt:
+                lt.download_audio("https://www.youtube.com/watch?v=abc", Path(tmp))
+            with self.assertRaises(lt.TranscribeError) as other:
+                lt.download_audio("https://vimeo.com/123", Path(tmp))
+        self.assertIn("Deno", str(yt.exception))
+        self.assertNotIn("Deno", str(other.exception))
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("yt_dlp.YoutubeDL", fake), \
+                mock.patch.object(lt, "find_js_runtime", return_value="/opt/deno"):
+            with self.assertRaises(lt.TranscribeError) as found:
+                lt.download_audio("https://youtu.be/abc", Path(tmp))
+        self.assertNotIn("Deno", str(found.exception))
+
+    def test_find_js_runtime_prefers_the_private_copy(self):
+        exe = "deno.exe" if os.name == "nt" else "deno"
+        with tempfile.TemporaryDirectory() as tmp:
+            private = Path(tmp) / ".venv" / ("Scripts" if os.name == "nt" else "bin") / exe
+            private.parent.mkdir(parents=True)
+            private.write_text("#!/bin/sh\n")
+            private.chmod(0o755)
+            with mock.patch.object(lt, "__file__", str(Path(tmp) / "local_transcribe.py")):
+                self.assertEqual(lt.find_js_runtime(), str(private))
+            private.unlink()
+            with mock.patch.object(lt, "__file__", str(Path(tmp) / "local_transcribe.py")), \
+                    mock.patch("shutil.which", return_value=None):
+                self.assertIsNone(lt.find_js_runtime())
 
     def test_other_errors_are_not_retried(self):
         fake, calls = self.fake_downloader(failures=5, message="This video is unavailable")

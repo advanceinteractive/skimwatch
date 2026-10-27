@@ -129,6 +129,21 @@ def native_section(app: Optional[Path]) -> tuple:
     return "\n".join(lines) + "\n", problems
 
 
+def programs_section(app: Optional[Path]) -> str:
+    """Stand-alone programs bundled in the app (not Python packages)."""
+    if not app or not any(app.rglob("bin/deno")):
+        return ""
+    version = Path(__file__).with_name("deno-version.txt").read_text().strip()
+    return (
+        "Programs bundled in this app\n"
+        "----------------------------\n"
+        f"- Deno {version}: MIT. Source: https://github.com/denoland/deno\n"
+        "  Deno runs the YouTube challenge-solver scripts (yt-dlp-ejs, listed\n"
+        "  below) with no file or network access. Its license text is in\n"
+        "  DENO-LICENSE.txt next to this file.\n"
+    )
+
+
 def main(out: str, app: Optional[Path] = None) -> None:
     dists = {}
     for dist in metadata.distributions():
@@ -141,6 +156,7 @@ def main(out: str, app: Optional[Path] = None) -> None:
         "third-party software. SkimWatch itself is MIT licensed; see\n"
         "LICENSE.txt.\n",
         native,
+        programs_section(app),
         WEIGHTS,
     ]
     for key in sorted(dists):
