@@ -357,6 +357,121 @@ def download_audio(
 
 
 # ---------------------------------------------------------------------------
+# Captions: when the uploader published a transcript, use it instead
+# ---------------------------------------------------------------------------
+
+_CUE_TIME = re.compile(
+    r"(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})\s+-->\s+(?:(\d+):)?(\d{1,2}):(\d{2})[.,](\d{3})")
+_NOT_CAPTIONS = {"live_chat", "rechat", "danmaku", "comments"}
+
+
+def _cue_seconds(h, m, s, ms) -> float:
+    return int(h or 0) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
+
+
+def parse_vtt(text: str) -> list:
+    """WebVTT (or SRT) captions to [{"start", "end", "text"}]."""
+    segments, cue = [], None
+    for raw in (text or "").splitlines() + [""]:
+        line = raw.strip()
+        match = _CUE_TIME.search(line)
+        if match:
+            g = match.groups()
+            cue = {"start": _cue_seconds(*g[:4]), "end": _cue_seconds(*g[4:]), "lines": []}
+            continue
+        if cue is None:
+            continue
+        if line:
+            # Drop styling tags (<c>, <i>, <00:00:01.000>) and speaker voice tags.
+            clean = re.sub(r"<[^>]*>", "", line)
+            clean = (clean.replace("&nbsp;", " ").replace("&amp;", "&")
+                     .replace("&lt;", "<").replace("&gt;", ">").strip())
+            if clean:
+                cue["lines"].append(clean)
+            continue
+        text_ = " ".join(cue["lines"]).strip()
+        if text_ and not (segments and segments[-1]["text"] == text_):
+            segments.append({"start": cue["start"], "end": cue["end"], "text": text_})
+        cue = None
+    return segments
+
+
+def pick_caption_track(subtitles: dict, wanted: Optional[str],
+                       original: Optional[str]) -> Optional[str]:
+    """
+    Choose which uploaded caption track to use, or None. Only tracks in the
+    language asked for, or the video's own language, so we never return a
+    translation the uploader added for other viewers.
+    """
+    tracks = [k for k in (subtitles or {}) if k not in _NOT_CAPTIONS]
+    for lang in ([wanted] if wanted else []) + ([] if wanted else [original]):
+        if not lang:
+            continue
+        lang = lang.lower()
+        exact = [k for k in tracks if k.lower() == lang]
+        close = [k for k in tracks if k.lower().split("-")[0] == lang.split("-")[0]]
+        if exact or close:
+            return (exact or sorted(close))[0]
+    if not wanted and len(tracks) == 1:
+        return tracks[0]
+    return None
+
+
+def fetch_captions(url: str, language: Optional[str] = None,
+                   should_cancel: Optional[Callable[[], bool]] = None) -> Optional[dict]:
+    """
+    The captions the uploader published for this video, as segments, or None
+    if there are none we trust (auto-generated captions are skipped: Whisper
+    does better). Never raises; any trouble means "use Whisper instead".
+    """
+    try:
+        from yt_dlp import YoutubeDL
+    except ImportError:
+        return None
+    js_runtime = find_js_runtime()
+    opts = {
+        "quiet": True, "no_warnings": True, "noprogress": True,
+        "logger": _SilentLogger(), "skip_download": True,
+        "noplaylist": True, "playlist_items": "1",
+        "js_runtimes": {"deno": {"path": js_runtime} if js_runtime else {}},
+    }
+    try:
+        with YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and info.get("_type") == "playlist":
+                entries = [e for e in (info.get("entries") or []) if e]
+                info = entries[0] if entries else None
+            if not info or info.get("is_live") or (should_cancel and should_cancel()):
+                return None
+            wanted = None if language in (None, "", "auto") else language
+            track = pick_caption_track(info.get("subtitles") or {}, wanted,
+                                       info.get("language"))
+            if not track:
+                return None
+            formats = info["subtitles"][track]
+            chosen = next((f for f in formats if f.get("ext") == "vtt"), None) or \
+                next((f for f in formats if f.get("ext") == "srt"), None)
+            if not chosen or not chosen.get("url"):
+                return None
+            raw = ydl.urlopen(chosen["url"]).read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    segments = parse_vtt(raw)
+    if not segments:
+        return None
+    video_id = str(info.get("id") or "video")
+    return {
+        "segments": segments,
+        "language": track.split("-")[0].lower(),
+        "id": video_id,
+        "title": info.get("title") or video_id,
+        "duration": info.get("duration") or segments[-1]["end"],
+        "uploader": info.get("uploader") or info.get("channel") or "",
+        "webpage_url": info.get("webpage_url") or url,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Transcription
 # ---------------------------------------------------------------------------
 
@@ -400,6 +515,39 @@ def load_model(model_name: str, device: str = "auto"):
             )
         _model_cache[key] = model
         return model
+
+
+# Models big enough that decoding many pieces at once strains an 8 GB Mac.
+_LARGE_MODELS = {"medium", "turbo", "large-v3"}
+
+
+def _total_memory_gb() -> Optional[float]:
+    try:
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 1e9
+    except (AttributeError, ValueError, OSError):
+        return None  # Windows, or a system that won't say
+
+
+def batch_size_for(model_name: str) -> int:
+    """
+    How many pieces of speech Whisper decodes at once. Batching is several
+    times faster on machines with the cores and memory for it; 1 means the
+    original one-piece-at-a-time mode. SKIMWATCH_BATCH_SIZE overrides it.
+    """
+    override = os.environ.get("SKIMWATCH_BATCH_SIZE", "").strip()
+    if override:
+        try:
+            return max(1, min(int(override), 32))
+        except ValueError:
+            pass
+    cores = os.cpu_count() or 1
+    memory = _total_memory_gb()
+    if cores < 4 or (memory is not None and memory < 7.5):
+        return 1
+    size = 8 if memory is None or memory >= 15 else 4
+    if model_name in _LARGE_MODELS:
+        size //= 2
+    return max(size, 1)
 
 
 def chunk_bounds(audio, chunk_seconds: int = CHUNK_SECONDS, search_seconds: int = 30) -> list:
@@ -453,6 +601,15 @@ def transcribe(
             progress("transcribing", 0.0, "")
         from faster_whisper import decode_audio
 
+        batch_size = batch_size_for(model_name)
+        batched = None
+        if batch_size > 1:
+            try:
+                from faster_whisper import BatchedInferencePipeline
+                batched = BatchedInferencePipeline(model=model)
+            except Exception:
+                batched = None  # older faster-whisper: one piece at a time
+
         audio = decode_audio(str(audio_path), sampling_rate=SAMPLE_RATE)
         duration = len(audio) / SAMPLE_RATE
         lang = language
@@ -461,15 +618,44 @@ def transcribe(
         # hour in one call needs several gigabytes of memory.
         for begin, end in chunk_bounds(audio):
             offset = begin / SAMPLE_RATE
-            segments_iter, info = model.transcribe(
-                audio[begin:end],
-                language=lang,
-                vad_filter=True,
-                condition_on_previous_text=False,
-            )
+            piece = audio[begin:end]
+            found = None
+            if batched is not None:
+                try:
+                    segments_iter, info = batched.transcribe(
+                        piece,
+                        language=lang,
+                        vad_filter=True,
+                        condition_on_previous_text=False,
+                        without_timestamps=False,
+                        batch_size=batch_size,
+                    )
+                    # Finish the piece before showing any of it, so a failure
+                    # part-way can be redone below without repeating text.
+                    found = []
+                    for seg in segments_iter:
+                        if should_cancel and should_cancel():
+                            raise Cancelled()
+                        found.append(seg)
+                except Cancelled:
+                    raise
+                except Exception:
+                    # Usually memory. Redo this piece one-at-a-time, and stay
+                    # that way for the rest.
+                    batched = found = None
+                    if should_cancel and should_cancel():
+                        raise Cancelled()
+            if found is None:
+                segments_iter, info = model.transcribe(
+                    piece,
+                    language=lang,
+                    vad_filter=True,
+                    condition_on_previous_text=False,
+                )
+                found = segments_iter
             # Keep the language detected in the first piece for the rest.
             lang = lang or getattr(info, "language", None)
-            for seg in segments_iter:
+            for seg in found:
                 if should_cancel and should_cancel():
                     raise Cancelled()
                 text = (seg.text or "").strip()
@@ -628,25 +814,49 @@ def run_pipeline(
     on_segment: Optional[Callable[[dict], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
     max_seconds: Optional[float] = None,
+    use_captions: bool = True,
 ) -> dict:
     """
-    Download, transcribe, format and save. Returns a dict with the video
+    Download, transcribe, format and save. When use_captions is on and the
+    uploader published captions in the right language, those are used and
+    nothing is downloaded or transcribed. Returns a dict with the video
     details, segments, paragraphs, text, srt and the saved file paths.
     """
     url = validate_url(url)
     model_name = resolve_model(model_name)
     out_dir = Path(out_dir) if out_dir else DEFAULT_OUT_DIR
 
-    with tempfile.TemporaryDirectory(prefix="local_transcribe_") as tmp:
+    captions = None
+    if use_captions and not keep_audio:
         if progress:
-            progress("downloading", None, "")
-        media = download_audio(url, Path(tmp), progress, should_cancel, max_seconds)
-        if on_info:
-            on_info({k: v for k, v in media.items() if k != "path"})
+            progress("downloading", None, "Checking for captions")
+        captions = fetch_captions(url, language, should_cancel)
+        if should_cancel and should_cancel():
+            raise Cancelled()
 
-        result = transcribe(
-            media["path"], model_name, language, progress, on_segment, should_cancel
-        )
+    with tempfile.TemporaryDirectory(prefix="local_transcribe_") as tmp:
+        if captions:
+            media = {k: v for k, v in captions.items() if k not in ("segments", "language")}
+            if on_info:
+                on_info(dict(media))
+            if progress:
+                progress("transcribing", 1.0, "captions")
+            if on_segment:
+                for segment in captions["segments"]:
+                    on_segment(segment)
+            result = {"segments": captions["segments"], "language": captions["language"],
+                      "duration": media["duration"]}
+            source = "captions"
+        else:
+            if progress:
+                progress("downloading", None, "")
+            media = download_audio(url, Path(tmp), progress, should_cancel, max_seconds)
+            if on_info:
+                on_info({k: v for k, v in media.items() if k != "path"})
+            result = transcribe(
+                media["path"], model_name, language, progress, on_segment, should_cancel
+            )
+            source = "whisper"
         if not result["segments"]:
             raise TranscribeError("No speech was found in that video.")
 
@@ -669,6 +879,8 @@ def run_pipeline(
         "duration": result["duration"] or media["duration"] or 0,
         "language": result["language"],
         "model": model_name,
+        # Where the words came from: "captions" (the uploader's own) or "whisper".
+        "source": source,
         "segments": result["segments"],
         "paragraphs": result["paragraphs"],
         "text": format_transcript(result["paragraphs"]),
@@ -708,6 +920,10 @@ def main() -> None:
     parser.add_argument(
         "--keep-audio", action="store_true",
         help="Keep the downloaded audio file alongside the transcripts.",
+    )
+    parser.add_argument(
+        "--no-captions", action="store_true",
+        help="Always transcribe with Whisper, even if the video has its own captions.",
     )
     parser.add_argument("--version", action="version", version=__version__)
     args = parser.parse_args()
@@ -749,6 +965,7 @@ def main() -> None:
             out_dir=Path(os.path.expanduser(args.out)).resolve(),
             keep_audio=args.keep_audio,
             progress=progress,
+            use_captions=not args.no_captions,
         )
     except TranscribeError as exc:
         print()
@@ -760,6 +977,8 @@ def main() -> None:
     print("\n")
     print("Done.")
     print(f"  Title : {result['title']}")
+    print("  From  : " + ("the video's own captions (use --no-captions for Whisper)"
+                          if result["source"] == "captions" else f"Whisper ({result['model']})"))
     print(f"  Text  : {result['txt_path']}")
     print(f"  SRT   : {result['srt_path']}")
     if result["audio_path"]:

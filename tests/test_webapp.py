@@ -147,6 +147,11 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(done["paragraphs"][0]["text"], "Hello there. This is a test.")
         self.assertIn("00:00:02,000 --> 00:00:04,000", done["srt"])
         self.assertEqual(done["base_name"], "Fake_Video_abc")
+        self.assertTrue(LAST_PIPELINE_CALL["use_captions"])  # on unless turned off
+        _, job = self.json("/api/jobs", {"url": "https://example.com/watch?v=2",
+                                         "use_captions": False})
+        self.wait(job["id"])
+        self.assertFalse(LAST_PIPELINE_CALL["use_captions"])
 
     def test_download_error_is_reported(self):
         _, job = self.json("/api/jobs", {"url": "https://example.com/fail"})
@@ -174,6 +179,8 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(
             self.json("/api/jobs", {"url": "https://a.test/v", "language": "../x"})[0], 400)
         self.assertEqual(self.json("/api/jobs", raw=b"{not json")[0], 400)
+        self.assertEqual(
+            self.json("/api/jobs", {"url": "https://a.test/v", "use_captions": "yes"})[0], 400)
         self.assertEqual(self.json("/api/jobs", raw=b"[1]")[0], 400)
         self.assertEqual(self.json("/api/jobs/000000000000")[0], 404)
         self.assertEqual(self.json("/nope")[0], 404)

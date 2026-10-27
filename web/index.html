@@ -81,6 +81,7 @@
   .ask-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
   .ask-head h2 { margin: 0; }
   #ai-intro p { margin: 0 0 14px; max-width: 62ch; }
+  #form .check { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: inherit; margin: 12px 0 0; }
   #ai-settings .check { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; color: inherit; }
   #ai-settings { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0 16px; margin: 8px 0 16px; }
   .field { margin-bottom: 14px; }
@@ -149,6 +150,8 @@
       </div>
     </div>
     <p class="hint" id="model-hint"></p>
+    <label class="check"><input id="use-captions" type="checkbox" checked>
+      Use the video's own captions when it has them (instant)</label>
   </form>
 
   <div id="error" class="card error" role="alert" hidden></div>
@@ -329,6 +332,7 @@
     $("url").disabled = busy;
     $("model").disabled = busy;
     $("language").disabled = busy;
+    $("use-captions").disabled = busy;
     $("progress").hidden = !busy;
   }
 
@@ -372,6 +376,7 @@
     if (job.uploader) { bits.push(job.uploader); }
     if (job.duration) { bits.push(clock(job.duration)); }
     if (job.language) { bits.push("language: " + job.language); }
+    if (job.source === "captions") { bits.push("from the video's own captions"); }
     if (bits.length) { meta.appendChild(document.createTextNode(bits.join(" · ") + " · ")); }
     if (job.webpage_url) {
       var a = document.createElement("a");
@@ -385,7 +390,9 @@
     var stage = STAGES[job.status];
     if (stage) {
       var pct = typeof job.progress === "number" ? Math.round(job.progress * 100) : null;
-      $("stage").textContent = stage[0] + (pct !== null ? " " + pct + "%" : "");
+      var label = job.status === "downloading" && job.detail === "Checking for captions"
+        ? "Checking for captions…" : stage[0];
+      $("stage").textContent = label + (pct !== null ? " " + pct + "%" : "");
       $("stage-hint").textContent = stage[1];
       $("bar").classList.toggle("busy", pct === null);
       $("bar").firstElementChild.style.width = pct === null ? "" : pct + "%";
@@ -441,11 +448,13 @@
     api("/api/jobs", {
       url: $("url").value,
       model: $("model").value,
-      language: $("language").value
+      language: $("language").value,
+      use_captions: $("use-captions").checked
     }).then(function (job) {
       jobId = job.id;
       try {
         localStorage.setItem("lt-model", $("model").value);
+        localStorage.setItem("lt-captions", $("use-captions").checked ? "1" : "0");
         // Lets the page pick the job up again if the phone reloads it.
         localStorage.setItem("lt-job", job.id);
       } catch (e) {}
@@ -887,6 +896,7 @@
     models = config.models;
     var saved = null;
     try { saved = localStorage.getItem("lt-model"); } catch (e) {}
+    try { $("use-captions").checked = localStorage.getItem("lt-captions") !== "0"; } catch (e) {}
     models.forEach(function (m) {
       var option = document.createElement("option");
       option.value = m.name;

@@ -13,6 +13,9 @@ questions instead of watching the whole thing.
 - **Private.** The audio is downloaded and transcribed locally with
   [Whisper](https://github.com/openai/whisper). Nothing is uploaded, and no
   account or API key is needed.
+- **Fast.** If the uploader published captions, you get them instantly and
+  nothing is downloaded. Otherwise Whisper transcribes several pieces of
+  speech at once on computers with the memory for it.
 - **Ask questions (optional).** Connect Claude, ChatGPT or a local Ollama
   model to summarise a transcript or answer questions about it.
 - **Simple.** Double-click one file to start. A page opens in your browser;
@@ -89,6 +92,19 @@ Apple Silicon Mac. Bigger models and older computers are slower.
 The spoken language is detected automatically. If a video starts with music or
 switches language, pick the language yourself for a better result.
 
+**Captions first.** When **Use the video's own captions** is ticked (the
+default) and the uploader published captions in the video's language (or the
+one you picked), SkimWatch uses those: the transcript appears in a second or
+two, nothing is downloaded, and the page notes "from the video's own
+captions". Automatic captions that YouTube generates itself are not used,
+since Whisper does better. Untick the box to always use Whisper.
+
+**Batching.** On a computer with at least 4 cores and 8 GB of memory, Whisper
+transcribes several pieces of speech at once, which is several times faster.
+Smaller computers work one piece at a time, as do the biggest quality levels
+when memory is tight. To choose yourself, set `SKIMWATCH_BATCH_SIZE` before
+starting (`1` means one at a time).
+
 ## Ask questions about a transcript (optional)
 
 Click **AI settings** at the top of the page (or **Set up AI assistant** under a
@@ -138,7 +154,8 @@ Good to know:
 - Your computer must be on, awake and running both the program and the tunnel.
 - It transcribes one video at a time; others wait their turn. Videos
   visitors paste can be up to 3 hours long, so one stray link can't tie up
-  your computer for a day; you have no limit when using it yourself.
+  your computer for a day (videos with their own captions are exempt, since
+  they take no work); you have no limit when using it yourself.
 - Visitors can transcribe. They can also ask the AI assistant questions if you
   tick **Let people I share with ask questions too** in **AI settings** (off by
   default; their questions are billed to your key). They cannot see or change
@@ -165,6 +182,7 @@ The same engine works without the browser:
 ```
 python local_transcribe.py "https://www.youtube.com/watch?v=..." --model small
 python local_transcribe.py "<url>" --language es --out ~/Desktop/transcripts --keep-audio
+python local_transcribe.py "<url>" --no-captions    # always use Whisper
 ```
 
 Run it with the Python inside `.venv` (`.venv/bin/python` on macOS/Linux,

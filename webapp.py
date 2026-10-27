@@ -146,12 +146,13 @@ def load_share(path: Optional[Path] = None, code: Optional[str] = None,
 
 class Job:
     def __init__(self, url: str, model: str, language: str,
-                 max_seconds: Optional[float] = None) -> None:
+                 max_seconds: Optional[float] = None, use_captions: bool = True) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.url = url
         self.model = model
         self.language = language
         self.max_seconds = max_seconds
+        self.use_captions = use_captions
         self.status = "queued"
         self.progress: Optional[float] = None
         self.detail = ""
@@ -189,6 +190,7 @@ class Job:
                     paragraphs=r["paragraphs"],
                     srt=r["srt"],
                     base_name=r["base_name"],
+                    source=r.get("source", "whisper"),
                     txt_path=r["txt_path"],
                     srt_path=r["srt_path"],
                 )
@@ -216,8 +218,8 @@ class JobManager:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def submit(self, url: str, model: str, language: str,
-               max_seconds: Optional[float] = None) -> Job:
-        job = Job(url, model, language, max_seconds)
+               max_seconds: Optional[float] = None, use_captions: bool = True) -> Job:
+        job = Job(url, model, language, max_seconds, use_captions)
         with self.lock:
             finished = [j for j in self.jobs.values() if j.status in FINISHED]
             for old in sorted(finished, key=lambda j: j.created)[:-MAX_FINISHED_JOBS]:
@@ -267,6 +269,7 @@ class JobManager:
                 on_segment=on_segment,
                 should_cancel=job.cancel.is_set,
                 max_seconds=job.max_seconds,
+                use_captions=job.use_captions,
             )
             with job.lock:
                 job.result, job.status, job.progress = result, "done", 1.0
@@ -558,9 +561,13 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[a-z]{2,3}|auto", language):
                 self._json(400, {"error": "Unknown language."})
                 return
+            use_captions = data.get("use_captions", True)
+            if not isinstance(use_captions, bool):
+                self._json(400, {"error": "Invalid captions setting."})
+                return
             job = self.manager.submit(
                 url, model, language,
-                VISITOR_MAX_SECONDS if self._is_remote() else None)
+                VISITOR_MAX_SECONDS if self._is_remote() else None, use_captions)
             self._json(202, self._snapshot(job))
             return
 

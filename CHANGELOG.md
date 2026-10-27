@@ -13,6 +13,15 @@ First public release, published by Advance Interactive.
   are no longer sent to them.
 - **Clearer refusals:** a live stream or an over-long video now gets its own
   message instead of "Nothing could be downloaded".
+- **Captions first.** If the uploader published captions in the video's
+  language, they are used directly: the transcript is ready in seconds and
+  nothing is downloaded. YouTube's own automatic captions are skipped. On by
+  default; untick it on the page or pass `--no-captions` to always use Whisper.
+- **Faster Whisper.** Transcription now decodes several pieces of speech at
+  once (faster-whisper's batched mode) on machines with 4+ cores and 8 GB+ of
+  memory; smaller machines keep the one-at-a-time mode. If batching fails
+  part-way (usually memory), that piece is redone one at a time, with no
+  repeated text. `SKIMWATCH_BATCH_SIZE` overrides the choice.
 - **YouTube works out of the box.** YouTube now requires the downloader to
   run small JavaScript puzzles, which needs a JavaScript runtime. The Mac app
   bundles [Deno](https://deno.com/) and yt-dlp's solver scripts; the start

@@ -1,6 +1,7 @@
 """Unit tests for the formatting and validation helpers (no network needed)."""
 
 import sys
+import io
 import os
 import tempfile
 import unittest
@@ -295,3 +296,236 @@ class PipelineValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BatchedTranscribeTests(unittest.TestCase):
+    """transcribe() with a stand-in for faster_whisper."""
+
+    def fake_whisper(self, batched_fails=False):
+        import types
+        import numpy as np
+        calls = {"batched": 0, "sequential": 0, "pipelines": 0}
+
+        class Seg:
+            def __init__(self, start, end, text):
+                self.start, self.end, self.text = start, end, text
+
+        class Info:
+            language = "en"
+
+        def result():
+            return iter([Seg(0.0, 2.0, "Hello there."), Seg(2.0, 4.0, "This is a test.")]), Info()
+
+        class WhisperModel:
+            def __init__(self, *a, **k):
+                pass
+
+            def transcribe(self, audio, **kwargs):
+                calls["sequential"] += 1
+                return result()
+
+        class BatchedInferencePipeline:
+            def __init__(self, model):
+                calls["pipelines"] += 1
+
+            def transcribe(self, audio, **kwargs):
+                calls["batched"] += 1
+                calls["batch_size"] = kwargs.get("batch_size")
+                calls["without_timestamps"] = kwargs.get("without_timestamps")
+                if batched_fails:
+                    def boom():
+                        yield Seg(0.0, 2.0, "Hello there.")
+                        raise RuntimeError("out of memory")
+                    return boom(), Info()
+                return result()
+
+        module = types.ModuleType("faster_whisper")
+        module.WhisperModel = WhisperModel
+        module.BatchedInferencePipeline = BatchedInferencePipeline
+        module.decode_audio = lambda path, sampling_rate: np.zeros(sampling_rate * 5, dtype="float32")
+        return module, calls
+
+    def run_transcribe(self, module, batch_size):
+        shown = []
+        lt._model_cache.clear()
+        with mock.patch.dict(sys.modules, {"faster_whisper": module}), \
+                mock.patch.object(lt, "batch_size_for", return_value=batch_size):
+            result = lt.transcribe(Path("x.wav"), "base", on_segment=shown.append)
+        lt._model_cache.clear()
+        return result, shown
+
+    def test_batched_by_default_on_capable_machines(self):
+        module, calls = self.fake_whisper()
+        result, shown = self.run_transcribe(module, 8)
+        self.assertEqual((calls["batched"], calls["sequential"]), (1, 0))
+        self.assertEqual(calls["batch_size"], 8)
+        self.assertFalse(calls["without_timestamps"])  # keep subtitle-sized pieces
+        self.assertEqual([s["text"] for s in result["segments"]],
+                         ["Hello there.", "This is a test."])
+        self.assertEqual(shown, result["segments"])
+        self.assertEqual(result["language"], "en")
+
+    def test_one_at_a_time_on_small_machines(self):
+        module, calls = self.fake_whisper()
+        result, _ = self.run_transcribe(module, 1)
+        self.assertEqual((calls["pipelines"], calls["batched"], calls["sequential"]), (0, 0, 1))
+        self.assertEqual(len(result["segments"]), 2)
+
+    def test_batched_failure_redoes_the_piece_without_repeating_text(self):
+        module, calls = self.fake_whisper(batched_fails=True)
+        result, shown = self.run_transcribe(module, 8)
+        self.assertEqual((calls["batched"], calls["sequential"]), (1, 1))
+        self.assertEqual([s["text"] for s in shown], ["Hello there.", "This is a test."])
+        self.assertEqual(len(result["segments"]), 2)
+
+    def test_batch_size_rules(self):
+        with mock.patch.dict(os.environ, {"SKIMWATCH_BATCH_SIZE": "3"}):
+            self.assertEqual(lt.batch_size_for("base"), 3)
+        with mock.patch.dict(os.environ, {"SKIMWATCH_BATCH_SIZE": "500"}):
+            self.assertEqual(lt.batch_size_for("base"), 32)
+        with mock.patch.dict(os.environ, {"SKIMWATCH_BATCH_SIZE": ""}):
+            with mock.patch("os.cpu_count", return_value=2):
+                self.assertEqual(lt.batch_size_for("base"), 1)
+            with mock.patch("os.cpu_count", return_value=8), \
+                    mock.patch.object(lt, "_total_memory_gb", return_value=8.0):
+                self.assertEqual(lt.batch_size_for("small"), 4)
+                self.assertEqual(lt.batch_size_for("turbo"), 2)
+            with mock.patch("os.cpu_count", return_value=8), \
+                    mock.patch.object(lt, "_total_memory_gb", return_value=16.0):
+                self.assertEqual(lt.batch_size_for("small"), 8)
+                self.assertEqual(lt.batch_size_for("large-v3"), 4)
+            with mock.patch("os.cpu_count", return_value=8), \
+                    mock.patch.object(lt, "_total_memory_gb", return_value=4.0):
+                self.assertEqual(lt.batch_size_for("small"), 1)
+
+
+VTT = """WEBVTT
+Kind: captions
+Language: en
+
+00:00:00.500 --> 00:00:02.000
+Hello <c>there</c>.
+
+NOTE this is a comment
+
+00:00:02.000 --> 00:00:04.250 align:start
+This is a test,
+with two lines.
+
+00:00:04.250 --> 00:00:05.000
+This is a test,
+with two lines.
+
+01:00:00.000 --> 01:00:01.000
+An hour &amp; on.
+"""
+
+
+class CaptionTests(unittest.TestCase):
+    def test_parse_vtt(self):
+        segments = lt.parse_vtt(VTT)
+        self.assertEqual([s["text"] for s in segments],
+                         ["Hello there.", "This is a test, with two lines.", "An hour & on."])
+        self.assertEqual((segments[0]["start"], segments[0]["end"]), (0.5, 2.0))
+        self.assertEqual(segments[2]["start"], 3600.0)
+        self.assertEqual(lt.parse_vtt(""), [])
+
+    def test_pick_track_never_returns_a_translation(self):
+        subs = {"en": [], "es": [], "live_chat": []}
+        self.assertEqual(lt.pick_caption_track(subs, None, "en"), "en")
+        self.assertEqual(lt.pick_caption_track(subs, "es", "en"), "es")
+        self.assertIsNone(lt.pick_caption_track(subs, "fr", "en"))
+        # Unknown original language and several tracks: let Whisper decide.
+        self.assertIsNone(lt.pick_caption_track(subs, None, None))
+        self.assertEqual(lt.pick_caption_track({"en-GB": []}, None, None), "en-GB")
+        self.assertEqual(lt.pick_caption_track({"en-US": [], "en-GB": []}, "en", None), "en-GB")
+        self.assertIsNone(lt.pick_caption_track({"live_chat": []}, None, None))
+
+    def fake_ydl(self, info, body=VTT):
+        seen = {}
+
+        class FakeYoutubeDL:
+            def __init__(self, opts):
+                seen["opts"] = opts
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def extract_info(self, url, download=True):
+                seen["download"] = download
+                return info
+
+            def urlopen(self, url):
+                seen["fetched"] = url
+                return io.BytesIO(body.encode())
+
+        return FakeYoutubeDL, seen
+
+    def test_fetch_captions(self):
+        info = {"id": "abc", "title": "T", "duration": 61, "uploader": "U", "language": "en",
+                "subtitles": {"en": [{"ext": "json3", "url": "j"}, {"ext": "vtt", "url": "v"}]},
+                "automatic_captions": {"en": [{"ext": "vtt", "url": "auto"}]}}
+        fake, seen = self.fake_ydl(info)
+        with mock.patch("yt_dlp.YoutubeDL", fake):
+            got = lt.fetch_captions("https://www.youtube.com/watch?v=abc")
+        self.assertFalse(seen["download"])
+        self.assertTrue(seen["opts"]["skip_download"])
+        self.assertEqual(seen["fetched"], "v")
+        self.assertEqual((got["title"], got["language"], got["duration"]), ("T", "en", 61))
+        self.assertEqual(len(got["segments"]), 3)
+
+    def test_no_captions_means_none(self):
+        # Only automatic captions, a live stream, and a failure all mean "use Whisper".
+        cases = [
+            {"id": "a", "subtitles": {}, "automatic_captions": {"en": [{"ext": "vtt", "url": "x"}]}},
+            {"id": "a", "is_live": True, "language": "en",
+             "subtitles": {"en": [{"ext": "vtt", "url": "v"}]}},
+        ]
+        for info in cases:
+            fake, _ = self.fake_ydl(info)
+            with mock.patch("yt_dlp.YoutubeDL", fake):
+                self.assertIsNone(lt.fetch_captions("https://a.test/v"))
+
+        class Broken:
+            def __init__(self, opts):
+                raise RuntimeError("network down")
+
+        with mock.patch("yt_dlp.YoutubeDL", Broken):
+            self.assertIsNone(lt.fetch_captions("https://a.test/v"))
+
+    def test_pipeline_uses_captions_and_skips_whisper(self):
+        captions = {"segments": lt.parse_vtt(VTT), "language": "en", "id": "abc",
+                    "title": "Cap Video", "duration": 3601, "uploader": "U",
+                    "webpage_url": "https://a.test/v"}
+        shown, stages = [], []
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(lt, "fetch_captions", return_value=captions), \
+                mock.patch.object(lt, "download_audio") as download, \
+                mock.patch.object(lt, "transcribe") as whisper:
+            result = lt.run_pipeline("https://a.test/v", out_dir=Path(tmp),
+                                     on_segment=shown.append,
+                                     progress=lambda st, f, d: stages.append((st, d)))
+            self.assertTrue(Path(result["txt_path"]).exists())
+        download.assert_not_called()
+        whisper.assert_not_called()
+        self.assertEqual(result["source"], "captions")
+        self.assertEqual(len(shown), 3)
+        self.assertIn(("downloading", "Checking for captions"), stages)
+
+    def test_pipeline_falls_back_or_skips_captions(self):
+        whisper_result = {"segments": [{"start": 0.0, "end": 1.0, "text": "Hi."}],
+                          "language": "en", "duration": 1.0}
+        media = {"path": Path("x.webm"), "id": "a", "title": "T", "duration": 1,
+                 "uploader": "", "webpage_url": "https://a.test/v"}
+        for use, found, expect_fetch in ((True, None, True), (False, {"x": 1}, False)):
+            with tempfile.TemporaryDirectory() as tmp, \
+                    mock.patch.object(lt, "fetch_captions", return_value=found) as fetch, \
+                    mock.patch.object(lt, "download_audio", return_value=media), \
+                    mock.patch.object(lt, "transcribe", return_value=whisper_result):
+                result = lt.run_pipeline("https://a.test/v", out_dir=Path(tmp),
+                                         use_captions=use)
+            self.assertEqual(result["source"], "whisper")
+            self.assertEqual(fetch.called, expect_fetch)
