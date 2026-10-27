@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import webapp
-from test_webapp import fake_pipeline
+from test_webapp import LAST_PIPELINE_CALL, fake_pipeline
 
 CODE = "ABCD-2345"
 TUNNEL = {"X-Forwarded-For": "203.0.113.9", "Host": "family.example.ts.net"}
@@ -127,8 +127,24 @@ class ShareTests(unittest.TestCase):
         self.assertNotIn("srt_path", job)
         # The owner still sees where it was saved.
         self.assertIn("txt_path", json.loads(self.call("/api/jobs/" + job_id)[2]))
+        # Visitors' videos are capped in length; the owner's are not.
+        self.assertEqual(LAST_PIPELINE_CALL["max_seconds"], webapp.VISITOR_MAX_SECONDS)
+        own = json.loads(self.call("/api/jobs", {"url": "https://example.com/mine"})[2])
+        for _ in range(100):
+            if json.loads(self.call("/api/jobs/" + own["id"])[2])["status"] == "done":
+                break
+            time.sleep(0.05)
+        self.assertIsNone(LAST_PIPELINE_CALL["max_seconds"])
 
-        self.assertEqual(self.call("/api/ai/settings", headers=visitor)[0], 200)
+        status, _, raw = self.call("/api/ai/settings", headers=visitor)
+        self.assertEqual(status, 200)
+        seen = json.loads(raw)
+        self.assertIn("visitors_can_ask", seen)
+        for provider in seen["providers"]:
+            self.assertEqual(set(provider),
+                             {"id", "name", "needs_key", "has_key", "sends_data_off_device"})
+        # The owner's own page still gets the full picture.
+        self.assertIn("base_url", json.loads(self.call("/api/ai/settings")[2])["providers"][0])
         self.assertEqual(self.call("/api/open-folder", {}, visitor)[0], 403)
         self.assertEqual(self.opened, [])
         self.assertEqual(

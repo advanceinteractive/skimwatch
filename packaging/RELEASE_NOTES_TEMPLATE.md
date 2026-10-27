@@ -6,7 +6,7 @@
 
 - …
 
-**Mac app:** `SkimWatch-X.Y.Z-mac-arm64.zip` (Apple Silicon, macOS 11+).
+**Mac app:** `SkimWatch-X.Y.Z-mac-arm64.zip` (Apple Silicon, macOS 14 Sonoma or later).
 On first open, allow it under **System Settings → Privacy & Security → Open
 Anyway**. See the [README](../README.md#quick-start) for details.
 

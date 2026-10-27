@@ -30,6 +30,14 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(lt.format_timestamp_srt(None), "00:00:00,000")
         self.assertEqual(lt.format_timestamp_srt(-3), "00:00:00,000")
 
+    def test_format_length(self):
+        self.assertEqual(lt.format_length(0), "0 minutes")
+        self.assertEqual(lt.format_length(61), "1 minute")
+        self.assertEqual(lt.format_length(45 * 60), "45 minutes")
+        self.assertEqual(lt.format_length(3600), "1 hour")
+        self.assertEqual(lt.format_length(2 * 3600 + 30 * 60), "2 hours 30 minutes")
+        self.assertEqual(lt.format_length(3 * 3600), "3 hours")
+
     def test_format_clock(self):
         self.assertEqual(lt.format_clock(5), "0:05")
         self.assertEqual(lt.format_clock(125.9), "2:05")
@@ -199,6 +207,32 @@ class DownloadTests(unittest.TestCase):
                 lt.download_audio("https://a.test/v", Path(tmp))
         self.assertEqual(len(calls), 2)
         self.assertNotIn("ERROR:", str(ctx.exception))
+
+    def test_refuses_long_and_live_videos_by_reason(self):
+        fake, calls = self.fake_downloader(failures=0)
+
+        class Filtering(fake):
+            info = {"duration": 4 * 3600}
+
+            def extract_info(self, url, download=True):
+                reason = self.opts["match_filter"](self.info, incomplete=False)
+                if reason:
+                    calls.append(self.opts)
+                    return None
+                return super().extract_info(url, download)
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch("yt_dlp.YoutubeDL", Filtering):
+            with self.assertRaises(lt.TranscribeError) as ctx:
+                lt.download_audio("https://a.test/v", Path(tmp), max_seconds=3 * 3600)
+            self.assertIn("4 hours long", str(ctx.exception))
+            self.assertIn("up to 3 hours", str(ctx.exception))
+            # Without a limit the same video is fine.
+            self.assertEqual(lt.download_audio("https://a.test/v", Path(tmp))["id"], "abc")
+            Filtering.info = {"is_live": True, "duration": 10}
+            with self.assertRaises(lt.TranscribeError) as ctx:
+                lt.download_audio("https://a.test/v", Path(tmp))
+            self.assertIn("live stream", str(ctx.exception))
+        self.assertEqual(len(calls), 3)
 
     def test_other_errors_are_not_retried(self):
         fake, calls = self.fake_downloader(failures=5, message="This video is unavailable")

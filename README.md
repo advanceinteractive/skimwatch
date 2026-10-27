@@ -28,8 +28,10 @@ questions instead of watching the whole thing.
 ### Mac app (no Python needed)
 
 1. Download `SkimWatch-<version>-mac-arm64.zip` from the
-   [Releases](../../releases) page and unzip it. (Apple Silicon Macs, M1 or
-   newer, on macOS 11 or later.)
+   [Releases](../../releases) page and unzip it. It needs an Apple Silicon
+   Mac (M1 or newer) running **macOS 14 Sonoma or later**. Not sure? Open the
+   Apple menu → **About This Mac**; it shows both. Intel Macs and older
+   macOS versions can run from source instead (next section).
 2. Drag **SkimWatch** to your Applications folder and open it.
 3. The app is not signed with a paid Apple certificate, so macOS blocks it the
    first time. Open **System Settings → Privacy & Security**, scroll down, and
@@ -130,7 +132,9 @@ they reach it through a private web address protected by an access code.
 Good to know:
 
 - Your computer must be on, awake and running both the program and the tunnel.
-- It transcribes one video at a time; others wait their turn.
+- It transcribes one video at a time; others wait their turn. Videos
+  visitors paste can be up to 3 hours long, so one stray link can't tie up
+  your computer for a day; you have no limit when using it yourself.
 - Visitors can transcribe. They can also ask the AI assistant questions if you
   tick **Let people I share with ask questions too** in **AI settings** (off by
   default; their questions are billed to your key). They cannot see or change
@@ -178,7 +182,8 @@ Web app options: `python webapp.py --port 9000 --no-browser --out <folder>`.
   (free, one command) is its recommended fix; no other setup is needed.
 - **Private, members-only, age-restricted or login-only videos** are not
   supported. Some sites (Vimeo, for example) require a login for most videos.
-- **Live streams** can be transcribed once they have ended.
+- **"That is a live stream"** — live streams can be transcribed once they
+  have ended.
 - **A playlist link** transcribes the first video only. Paste the link of the
   individual video you want.
 - **The page doesn't open** — look in the program's window for the address; if

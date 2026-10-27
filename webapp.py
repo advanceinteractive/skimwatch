@@ -46,6 +46,9 @@ MAX_BODY_BYTES = 16 * 1024
 # Questions carry the whole chat so far, so they need more room.
 MAX_ASK_BODY_BYTES = 512 * 1024
 MAX_FINISHED_JOBS = 20
+# Family sharing: the longest video a visitor may queue. Transcription ties
+# up the owner's computer, so a stray ten-hour stream shouldn't be one tap away.
+VISITOR_MAX_SECONDS = 3 * 60 * 60
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 SHARE_PATH = ai_chat.SETTINGS_PATH.parent / "share.json"
 SESSION_COOKIE = "lt_session"
@@ -142,11 +145,13 @@ def load_share(path: Optional[Path] = None, code: Optional[str] = None,
 
 
 class Job:
-    def __init__(self, url: str, model: str, language: str) -> None:
+    def __init__(self, url: str, model: str, language: str,
+                 max_seconds: Optional[float] = None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.url = url
         self.model = model
         self.language = language
+        self.max_seconds = max_seconds
         self.status = "queued"
         self.progress: Optional[float] = None
         self.detail = ""
@@ -210,8 +215,9 @@ class JobManager:
         self.queue: "queue.Queue[Job]" = queue.Queue()
         threading.Thread(target=self._worker, daemon=True).start()
 
-    def submit(self, url: str, model: str, language: str) -> Job:
-        job = Job(url, model, language)
+    def submit(self, url: str, model: str, language: str,
+               max_seconds: Optional[float] = None) -> Job:
+        job = Job(url, model, language, max_seconds)
         with self.lock:
             finished = [j for j in self.jobs.values() if j.status in FINISHED]
             for old in sorted(finished, key=lambda j: j.created)[:-MAX_FINISHED_JOBS]:
@@ -260,6 +266,7 @@ class JobManager:
                 on_info=on_info,
                 on_segment=on_segment,
                 should_cancel=job.cancel.is_set,
+                max_seconds=job.max_seconds,
             )
             with job.lock:
                 job.result, job.status, job.progress = result, "done", 1.0
@@ -462,7 +469,11 @@ class Handler(BaseHTTPRequestHandler):
                 "remote": remote,
             })
         elif path == "/api/ai/settings":
-            self._json(200, ai_chat.public_settings(ai_chat.load_settings(self.settings_path)))
+            settings = ai_chat.load_settings(self.settings_path)
+            # Visitors learn only whether questions work; the owner's model,
+            # server address and workspace are not their business.
+            view = ai_chat.visitor_settings if self._is_remote() else ai_chat.public_settings
+            self._json(200, view(settings))
         elif path == "/api/ai/models":
             if not self._owner_only():
                 return
@@ -547,7 +558,9 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"[a-z]{2,3}|auto", language):
                 self._json(400, {"error": "Unknown language."})
                 return
-            job = self.manager.submit(url, model, language)
+            job = self.manager.submit(
+                url, model, language,
+                VISITOR_MAX_SECONDS if self._is_remote() else None)
             self._json(202, self._snapshot(job))
             return
 

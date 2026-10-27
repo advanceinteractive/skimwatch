@@ -58,7 +58,7 @@ echo "==> Running PyInstaller"
 APP="$WORK/dist/$NAME.app"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$APP/Contents/Info.plist" 2>/dev/null ||
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 11.0" "$APP/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 14.0" "$APP/Contents/Info.plist" 2>/dev/null || true
 /usr/libexec/PlistBuddy -c "Add :NSHumanReadableCopyright string \"© $(date +%Y) Advance Interactive (SQLPRO LLC). MIT License; bundled components under their own licenses, see THIRD_PARTY_NOTICES.txt.\"" "$APP/Contents/Info.plist" 2>/dev/null || true
 echo "==> Writing third-party notices"
 "$WORK/venv/bin/python" packaging/third_party_notices.py "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt" "$APP"

@@ -25,8 +25,13 @@ SEGMENTS = [
 ]
 
 
+LAST_PIPELINE_CALL: dict = {}
+
+
 def fake_pipeline(url, model_name="base", language=None, out_dir=None, progress=None,
-                  on_info=None, on_segment=None, should_cancel=None, **_):
+                  on_info=None, on_segment=None, should_cancel=None, **extra):
+    LAST_PIPELINE_CALL.clear()
+    LAST_PIPELINE_CALL.update(extra, url=url)
     if "fail" in url:
         raise lt.TranscribeError("Could not download that video: nope")
     if "crash" in url:

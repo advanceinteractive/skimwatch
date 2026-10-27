@@ -7,6 +7,16 @@ All notable changes to this project are listed here. Versions follow
 
 First public release, published by Advance Interactive.
 
+- **Family sharing:** videos visitors submit are capped at 3 hours, and the
+  message says so. Visitors now see only whether the AI assistant is on and
+  which service answers; the owner's model, server address and workspace ID
+  are no longer sent to them.
+- **Clearer refusals:** a live stream or an over-long video now gets its own
+  message instead of "Nothing could be downloaded".
+- **Mac app:** declares its real minimum, macOS 14 Sonoma (the bundled
+  libraries are built for it); older systems get a clear "can't open" dialog
+  instead of a crash.
+
 - **Renamed to SkimWatch** (was Local Transcribe). Settings move from
   `~/.local-transcribe` to `~/.skimwatch` automatically on first start; the
   Mac app now saves to `Documents/SkimWatch`.

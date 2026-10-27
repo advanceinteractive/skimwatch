@@ -231,6 +231,28 @@ def public_settings(settings: dict) -> dict:
     }
 
 
+def visitor_settings(settings: dict) -> dict:
+    """
+    What a family-sharing visitor may see: enough to know whether questions
+    work and where they go, nothing about how the owner's account is set up.
+    """
+    settings = _normalise(settings)
+    return {
+        "provider": settings["provider"],
+        "visitors_can_ask": settings["visitors_can_ask"],
+        "providers": [
+            {
+                "id": pid,
+                "name": info["name"],
+                "needs_key": info["needs_key"],
+                "has_key": bool(_api_key(settings, pid)) if info["needs_key"] else False,
+                "sends_data_off_device": info["sends_data_off_device"],
+            }
+            for pid, info in PROVIDERS.items()
+        ],
+    }
+
+
 def _clean_base_url(value: str) -> str:
     value = value.strip().rstrip("/")
     parts = urllib.parse.urlsplit(value)

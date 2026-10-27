@@ -123,6 +123,18 @@ def format_timestamp_srt(seconds: Optional[float]) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
+def format_length(seconds: Optional[float]) -> str:
+    """Describe a duration in words: '45 minutes', '1 hour', '2 hours 30 minutes'."""
+    total = max(int(seconds or 0), 0)
+    hours, minutes = divmod(round(total / 60), 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours} hour" + ("s" if hours != 1 else ""))
+    if minutes or not parts:
+        parts.append(f"{minutes} minute" + ("s" if minutes != 1 else ""))
+    return " ".join(parts)
+
+
 def format_clock(seconds: Optional[float]) -> str:
     """Convert seconds into a short reading timestamp: M:SS or H:MM:SS."""
     total = int(seconds or 0)
@@ -188,15 +200,17 @@ def download_audio(
     workdir: Path,
     progress: Optional[ProgressFn] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    max_seconds: Optional[float] = None,
 ) -> dict:
     """
     Download the audio track of a video into workdir.
 
     Returns a dict with: path, id, title, duration, uploader, webpage_url.
+    A video longer than max_seconds (when given) is refused before anything
+    is downloaded.
     """
     try:
         from yt_dlp import YoutubeDL
-        from yt_dlp.utils import match_filter_func
     except ImportError:
         raise TranscribeError(
             "yt-dlp is not installed in this Python "
@@ -212,6 +226,20 @@ def download_audio(
             done = d.get("downloaded_bytes") or 0
             progress("downloading", (done / total) if total else None, "")
 
+    refused: dict = {}
+
+    def media_filter(info: dict, *, incomplete: bool = False) -> Optional[str]:
+        """Tell yt-dlp to skip the video, remembering why so the error can say."""
+        if info.get("is_live"):
+            refused["why"] = "live"
+            return "live stream"
+        duration = info.get("duration")
+        if max_seconds and duration and duration > max_seconds:
+            refused["why"] = "long"
+            refused["duration"] = duration
+            return "too long"
+        return None
+
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": str(workdir / "%(id)s.%(ext)s"),
@@ -224,7 +252,7 @@ def download_audio(
         "noplaylist": True,
         # A pure playlist link: take the first video rather than everything.
         "playlist_items": "1",
-        "match_filter": match_filter_func("!is_live"),
+        "match_filter": media_filter,
         "progress_hooks": [hook],
         "retries": 3,
     }
@@ -249,6 +277,13 @@ def download_audio(
     if info and info.get("_type") == "playlist":
         entries = [e for e in (info.get("entries") or []) if e]
         info = entries[0] if entries else None
+    if refused.get("why") == "long":
+        raise TranscribeError(
+            f"That video is {format_length(refused['duration'])} long. Videos "
+            f"shared with visitors can be up to {format_length(max_seconds)}.")
+    if refused.get("why") == "live":
+        raise TranscribeError(
+            "That is a live stream. Try again once it has ended.")
     if not info:
         raise TranscribeError(
             "Nothing could be downloaded from that link. Live streams are not "
@@ -558,6 +593,7 @@ def run_pipeline(
     on_info: Optional[Callable[[dict], None]] = None,
     on_segment: Optional[Callable[[dict], None]] = None,
     should_cancel: Optional[Callable[[], bool]] = None,
+    max_seconds: Optional[float] = None,
 ) -> dict:
     """
     Download, transcribe, format and save. Returns a dict with the video
@@ -570,7 +606,7 @@ def run_pipeline(
     with tempfile.TemporaryDirectory(prefix="local_transcribe_") as tmp:
         if progress:
             progress("downloading", None, "")
-        media = download_audio(url, Path(tmp), progress, should_cancel)
+        media = download_audio(url, Path(tmp), progress, should_cancel, max_seconds)
         if on_info:
             on_info({k: v for k, v in media.items() if k != "path"})
 
