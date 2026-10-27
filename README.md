@@ -6,6 +6,12 @@
 
 [skimwatch.com](https://skimwatch.com) · an [Advance Interactive](https://advanceinteractive.com) project
 
+![SkimWatch: paste a video link, get the transcript, ask it a question](docs/demo.gif)
+
+<sub>Demo with a captioned video (a public-domain reading), so the transcript is
+instant. Without captions, Whisper takes about 1½ minutes for a 7-minute video
+on an M2 MacBook Pro.</sub>
+
 Paste a link to a YouTube video (or a video from most other sites) and get a
 clean, readable transcript — in your browser, on your own computer. Then ask it
 questions instead of watching the whole thing.
