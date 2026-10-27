@@ -267,6 +267,9 @@ class DownloadTests(unittest.TestCase):
     def test_find_js_runtime_prefers_the_private_copy(self):
         exe = "deno.exe" if os.name == "nt" else "deno"
         with tempfile.TemporaryDirectory() as tmp:
+            # Resolve: macOS temp folders sit behind /var -> /private/var and
+            # Windows ones can be short 8.3 names, and the lookup resolves.
+            tmp = str(Path(tmp).resolve())
             private = Path(tmp) / ".venv" / ("Scripts" if os.name == "nt" else "bin") / exe
             private.parent.mkdir(parents=True)
             private.write_text("#!/bin/sh\n")
