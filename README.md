@@ -15,7 +15,7 @@ questions instead of watching the whole thing.
   account or API key is needed.
 - **Fast.** If the uploader published captions, you get them instantly and
   nothing is downloaded. Otherwise Whisper transcribes several pieces of
-  speech at once on computers with the memory for it.
+  speech at once on computers with the memory for it (about 1.7x faster).
 - **Ask questions (optional).** Connect Claude, ChatGPT or a local Ollama
   model to summarise a transcript or answer questions about it.
 - **Simple.** Double-click one file to start. A page opens in your browser;
@@ -86,8 +86,9 @@ be downloaded).
 | `turbo`    | ~1.6 GB  | Near-best accuracy, far faster than `large-v3` |
 | `large-v3` | ~3 GB    | Slowest, best accuracy                         |
 
-As a rough guide, `base` transcribes a 3½-minute talk in about 20 seconds on an
-Apple Silicon Mac. Bigger models and older computers are slower.
+As a rough guide, on an M2 MacBook Pro `small` turns a 7-minute video into
+text in about 1½ minutes, download included. Bigger models and older
+computers are slower; videos with their own captions are near-instant.
 
 The spoken language is detected automatically. If a video starts with music or
 switches language, pick the language yourself for a better result.
@@ -100,7 +101,9 @@ captions". Automatic captions that YouTube generates itself are not used,
 since Whisper does better. Untick the box to always use Whisper.
 
 **Batching.** On a computer with at least 4 cores and 8 GB of memory, Whisper
-transcribes several pieces of speech at once, which is several times faster.
+transcribes several pieces of speech at once: on an M2 MacBook Pro a 7-minute
+video took 1:30 instead of 2:31, download included. Text then appears a
+section (up to 10 minutes of video) at a time rather than line by line.
 Smaller computers work one piece at a time, as do the biggest quality levels
 when memory is tight. To choose yourself, set `SKIMWATCH_BATCH_SIZE` before
 starting (`1` means one at a time).

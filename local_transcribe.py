@@ -612,6 +612,15 @@ def transcribe(
 
         audio = decode_audio(str(audio_path), sampling_rate=SAMPLE_RATE)
         duration = len(audio) / SAMPLE_RATE
+        reported = [0.0]
+
+        def report(end: float) -> None:
+            # Only ever forward: batched mode reports while it decodes, then
+            # again as it shows the finished piece.
+            fraction = min(end / duration, 1.0) if duration else 0.0
+            if progress and fraction > reported[0]:
+                reported[0] = fraction
+                progress("transcribing", fraction, "")
         lang = language
         segments = []
         # Long recordings are fed to Whisper a piece at a time: doing a whole
@@ -637,6 +646,7 @@ def transcribe(
                         if should_cancel and should_cancel():
                             raise Cancelled()
                         found.append(seg)
+                        report(offset + float(seg.end))
                 except Cancelled:
                     raise
                 except Exception:
@@ -669,8 +679,7 @@ def transcribe(
                 segments.append(item)
                 if on_segment:
                     on_segment(item)
-                if progress and duration:
-                    progress("transcribing", min(item["end"] / duration, 1.0), "")
+                report(item["end"])
         lang = lang or ""
         joiner = "" if lang in _UNSPACED_LANGUAGES else " "
         return {

@@ -19,7 +19,9 @@ First public release, published by Advance Interactive.
   default; untick it on the page or pass `--no-captions` to always use Whisper.
 - **Faster Whisper.** Transcription now decodes several pieces of speech at
   once (faster-whisper's batched mode) on machines with 4+ cores and 8 GB+ of
-  memory; smaller machines keep the one-at-a-time mode. If batching fails
+  memory: a 7-minute video on `small` went from 2:31 to 1:30 on an M2
+  MacBook Pro, download included. Smaller machines keep the one-at-a-time
+  mode. The progress bar moves while each section is decoded. If batching fails
   part-way (usually memory), that piece is redone one at a time, with no
   repeated text. `SKIMWATCH_BATCH_SIZE` overrides the choice.
 - **YouTube works out of the box.** YouTube now requires the downloader to

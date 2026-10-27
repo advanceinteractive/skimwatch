@@ -365,6 +365,19 @@ class BatchedTranscribeTests(unittest.TestCase):
         self.assertEqual(shown, result["segments"])
         self.assertEqual(result["language"], "en")
 
+    def test_batched_progress_moves_while_decoding_and_never_goes_back(self):
+        module, _ = self.fake_whisper()
+        seen = []
+        lt._model_cache.clear()
+        with mock.patch.dict(sys.modules, {"faster_whisper": module}), \
+                mock.patch.object(lt, "batch_size_for", return_value=8):
+            lt.transcribe(Path("x.wav"), "base",
+                          progress=lambda stage, f, d: seen.append(f) if stage == "transcribing" else None)
+        lt._model_cache.clear()
+        fractions = [f for f in seen if f]
+        self.assertEqual(fractions, sorted(fractions))   # never backwards
+        self.assertEqual(fractions, [0.4, 0.8])          # 2 s and 4 s of a 5 s clip
+
     def test_one_at_a_time_on_small_machines(self):
         module, calls = self.fake_whisper()
         result, _ = self.run_transcribe(module, 1)
